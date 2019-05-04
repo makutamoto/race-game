@@ -15,11 +15,20 @@
 HWND window;
 HANDLE store;
 HANDLE input;
-HANDLE screen1, screen2;
+HANDLE screen;
+char *buffer;
+size_t bufferSize;
+COORD bufferSizeCoord = { 200, 200 };
 INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
 
 int32_t width, height;
 uint32_t *image;
+
+typedef struct {
+	unsigned int width;
+	unsigned int height;
+	char *data;
+} Image;
 
 BOOL loadBmp(char *fileName, uint32_t **img, int32_t *width, int32_t *height) {
 	FILE *file;
@@ -70,37 +79,34 @@ BOOL loadBmp(char *fileName, uint32_t **img, int32_t *width, int32_t *height) {
 	return TRUE;
 }
 
-void drawImage() {
-	DWORD nofWritten;
-	COORD cursor;
-	SetConsoleTextAttribute(screen1, BG_BLACK | FG_WHITE);
+void setPixelColor(unsigned int x, unsigned int y, char color) {
+	// matrix;
+	buffer[bufferSizeCoord.X * y + x] = color;
+}
+
+void drawImage(unsigned int ox, unsigned int oy) {
 	for(int32_t y = 0;y < height;y++) {
 		for(int32_t x = 0;x < width;x++) {
 			size_t index = y * (int32_t)ceil(width / 8.0) + x / 8;
 			uint8_t location = x % 8;
 			uint8_t highLow = location % 2;
 			uint8_t color;
+			char attribute[10];
 			if(highLow) {
 				color = (image[index] >> ((location - 1) * 4)) & 0x0F;
 			} else {
 				color = (image[index] >> ((location + 1) * 4)) & 0x0F;
 			}
-			color = (color & 0x8) | ((color << 2) & 0x4) | (color & 0x2) | ((color >> 2) & 0x1);
-			cursor.X = x;
-			cursor.Y = height - 1 - y;
-			SetConsoleCursorPosition(screen1, cursor);
-			SetConsoleTextAttribute(screen1, color << 4);
-			WriteConsole(screen1, " ", 2, &nofWritten, NULL);
+			setPixelColor(ox + x, oy + height - 1 - y, color);
 		}
 	}
-	SetConsoleTextAttribute(screen1, FG_WHITE | BG_BLACK);
 }
 
 int drawRect(HANDLE screen, unsigned int px, unsigned int py, unsigned int width, unsigned int height) {
 	DWORD nofWritten;
 	COORD cursor;
 	size_t size = width + 1;
-	char *line = malloc(size);
+	char *line = (char*)malloc(size);
 	if(line == NULL) return FALSE;
 	unsigned int i;
 	for(i = 0;i < size - 1;i++) line[i] = ' ';
@@ -118,35 +124,16 @@ int drawRect(HANDLE screen, unsigned int px, unsigned int py, unsigned int width
 	return TRUE;
 }
 
-int drawCircle(HANDLE screen, unsigned int px, unsigned int py, unsigned int radius) {
-	DWORD nofWritten;
-	COORD cursor;
-	unsigned int edgeSize = radius * 2;
-	size_t size = radius * 2 * 8 + 1;
-	char *line = malloc(size);
-	if(line == NULL) return FALSE;
-	SetConsoleTextAttribute(screen, BG_WHITE);
-	cursor.X = px;
-	unsigned int y;
-	for(y = 0;y < edgeSize;y++) {
-		cursor.Y = py + y;
-		SetConsoleCursorPosition(screen, cursor);
-		line[0] = '\0';
-		unsigned int x;
-		for(x = 0;x < edgeSize;x++) {
-			int xc = x - radius;
-			int yc = y - radius;
-			if(radius * radius >= xc * xc + yc * yc) {
-				strcat_s(line, size, "\x1b[107m ");
-			} else {
-				strcat_s(line, size, "\x1b[40m ");
-			}
+void drawCircle(unsigned int ox, unsigned int oy, unsigned int radius, char color) {
+	int y;
+	for(y = 0;y < 2 * radius;y++) {
+		int x;
+		for(x = 0;x < 2 * radius;x++) {
+			int cx = x - radius;
+			int cy = y - radius;
+			if(radius * radius >= cx * cx + cy * cy) setPixelColor(x + ox, y + oy, color);
 		}
-		WriteConsole(screen, line, strlen(line), &nofWritten, NULL);
 	}
-	SetConsoleTextAttribute(screen, FG_WHITE | BG_BLACK);
-	free(line);
-	return TRUE;
 }
 
 RECT storedSize;
@@ -156,13 +143,13 @@ void pushWindowSize() {
 	GetWindowInfo(window, &info);
 	storedSize = info.rcWindow;
 }
-void popWindwoSize() {
+void popWindowSize() {
 	MoveWindow(window, storedSize.left, storedSize.top, storedSize.right - storedSize.left, storedSize.bottom - storedSize.top, FALSE);
 }
 
+
 void initialize() {
 	CONSOLE_FONT_INFOEX font;
-	COORD size = {10000, 10000};
 	DWORD mode;
 	if(initLogger()) printf("Failed to Initialize the logger.");
 	loadBmp("hero.bmp", &image, &width, &height);
@@ -170,26 +157,21 @@ void initialize() {
 	window = GetConsoleWindow();
 	store = GetStdHandle(STD_OUTPUT_HANDLE);
 	input = GetStdHandle(STD_INPUT_HANDLE);
-	screen1 = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
-	screen2 = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
+	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 	SetConsoleTitle("Picture");
 	GetConsoleMode(store, &mode);
-	mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-	SetConsoleMode(screen1, mode);
-	SetConsoleMode(screen2, mode);
+	SetConsoleMode(screen, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 	font.cbSize = sizeof(CONSOLE_FONT_INFOEX);
-	SetConsoleScreenBufferSize(screen1, size);
-	SetConsoleScreenBufferSize(screen2, size);
-	GetCurrentConsoleFontEx(screen1, FALSE, &font);
+	GetCurrentConsoleFontEx(screen, FALSE, &font);
 	font.dwFontSize.X = 1;
 	font.dwFontSize.Y = 1;
-	SetCurrentConsoleFontEx(screen1, FALSE, &font);
-	SetCurrentConsoleFontEx(screen2, FALSE, &font);
-	SetConsoleCursorInfo(screen1, &cursor);
-	SetConsoleCursorInfo(screen2, &cursor);
+	SetCurrentConsoleFontEx(screen, FALSE, &font);
+	SetConsoleCursorInfo(screen, &cursor);
+	bufferSize = bufferSizeCoord.X * bufferSizeCoord.Y;
+	buffer = (char*)malloc(bufferSize);
 	pushWindowSize();
-	SetConsoleActiveScreenBuffer(screen1);
-	popWindwoSize();
+	SetConsoleActiveScreenBuffer(screen);
+	popWindowSize();
 }
 
 BOOL pollEvents() {
@@ -211,18 +193,63 @@ BOOL pollEvents() {
 	return TRUE;
 }
 
+void flush() {
+	DWORD nofWritten;
+	size_t bufferSize = (bufferSizeCoord.X * 8 + 20) * bufferSizeCoord.Y;
+	char temp[20], temp2[10];
+	char *data = (char*)malloc(bufferSize);
+	char previousColor = 0xFF;
+	data[0] = '\0';
+	unsigned int row;
+	for(row = 0;row < bufferSizeCoord.Y;row++) {
+		temp[0] = '\0';
+		strcat_s(temp, sizeof(temp), "\x1b[");
+		_itoa_s(row, temp2, sizeof(temp2), 10);
+		strcat_s(temp, sizeof(temp), temp2);
+		strcat_s(temp, sizeof(temp), ";0H");
+		strcat_s(data, bufferSize, temp);
+		unsigned int col;
+		for(col = 0;col < bufferSizeCoord.X;col++) {
+			size_t index = bufferSizeCoord.X * row + col;
+			if(buffer[index] == previousColor) {
+				strcat_s(data, bufferSize, " ");
+			} else {
+				temp[0] = '\0';
+				strcat_s(temp, sizeof(temp), "\x1b[");
+				_itoa_s(buffer[index] + (buffer[index] < 8 ? 40 : 92), temp2, sizeof(temp2), 10);
+				strcat_s(temp, sizeof(temp), temp2);
+				strcat_s(temp, sizeof(temp), "m ");
+				strcat_s(data, bufferSize, temp);
+			}
+			previousColor = buffer[index];
+		}
+	}
+	WriteConsole(screen, data, strlen(data), &nofWritten, NULL);
+	free(data);
+}
+
+int y = 0;
+void draw() {
+	memset(buffer, 0, bufferSize);
+	drawCircle(50, 50, 50, 1);
+	drawImage(100, 100);
+	flush();
+}
+
 void loop() {
 	while(TRUE) {
 		if(!pollEvents()) return;
-		drawCircle(screen1, 0, 0, 50);
+		draw();
 	}
 }
 
 void deinitialize() {
+	pushWindowSize();
 	SetConsoleActiveScreenBuffer(store);
-	CloseHandle(screen2);
-	CloseHandle(screen1);
+	popWindowSize();
+	CloseHandle(screen);
 	CloseHandle(store);
+	free(buffer);
 	free(image);
 	closeLogger();
 }
