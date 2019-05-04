@@ -12,6 +12,12 @@
 
 #define NOF_MAX_EVENTS 10
 
+typedef struct {
+	unsigned int width;
+	unsigned int height;
+	char *data;
+} Image;
+
 HWND window;
 HANDLE store;
 HANDLE input;
@@ -21,20 +27,14 @@ size_t bufferSize;
 COORD bufferSizeCoord = { 200, 200 };
 INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
 
-int32_t width, height;
-uint32_t *image;
+Image hero;
 
-typedef struct {
-	unsigned int width;
-	unsigned int height;
-	char *data;
-} Image;
-
-BOOL loadBmp(char *fileName, uint32_t **img, int32_t *width, int32_t *height) {
+BOOL loadBmp(char *fileName, Image *image) {
 	FILE *file;
 	BitmapHeader header;
 	BitmapInfoHeader infoHeader;
-	uint32_t *image;
+	uint32_t *img;
+	char *result;
 	if(fopen_s(&file, fileName, "rb")) {
 		fprintf(stderr, "Failed to open the file '%s'\n", fileName);
 		return FALSE;
@@ -67,14 +67,31 @@ BOOL loadBmp(char *fileName, uint32_t **img, int32_t *width, int32_t *height) {
 		fprintf(stderr, "Image data does not exist.\n");
 		return FALSE;
 	}
-	image = (uint32_t*)malloc(infoHeader.imageSize);
-	if(fread_s(image, infoHeader.imageSize, 1, infoHeader.imageSize, file) != infoHeader.imageSize) {
+	img = (uint32_t*)malloc(infoHeader.imageSize);
+	if(fread_s(img, infoHeader.imageSize, 1, infoHeader.imageSize, file) != infoHeader.imageSize) {
 		fprintf(stderr, "Image data is corrupted.\n");
 		return FALSE;
 	}
-	*width = infoHeader.width;
-	*height = infoHeader.height;
-	*img = image;
+	image->width = infoHeader.width;
+	image->height = infoHeader.height;
+	result = (char*)malloc(image->width * image->height);
+	int32_t y;
+	for(y = 0;y < image->height;y++) {
+		int32_t x;
+		for(x = 0;x < image->width;x++) {
+			size_t index = y * (int32_t)ceil(image->width / 8.0) + x / 8;
+			uint8_t location = x % 8;
+			uint8_t highLow = location % 2;
+			uint8_t color;
+			if(highLow) {
+				color = (img[index] >> ((location - 1) * 4)) & 0x0F;
+			} else {
+				color = (img[index] >> ((location + 1) * 4)) & 0x0F;
+			}
+			result[image->width * (image->height - 1 - y) + x] = color;
+		}
+	}
+	image->data = result;
 	fclose(file);
 	return TRUE;
 }
@@ -84,21 +101,29 @@ void setPixelColor(unsigned int x, unsigned int y, char color) {
 	buffer[bufferSizeCoord.X * y + x] = color;
 }
 
-void drawImage(unsigned int ox, unsigned int oy) {
-	for(int32_t y = 0;y < height;y++) {
-		for(int32_t x = 0;x < width;x++) {
-			size_t index = y * (int32_t)ceil(width / 8.0) + x / 8;
-			uint8_t location = x % 8;
-			uint8_t highLow = location % 2;
-			uint8_t color;
-			char attribute[10];
-			if(highLow) {
-				color = (image[index] >> ((location - 1) * 4)) & 0x0F;
-			} else {
-				color = (image[index] >> ((location + 1) * 4)) & 0x0F;
-			}
-			setPixelColor(ox + x, oy + height - 1 - y, color);
-		}
+// void drawImage(unsigned int ox, unsigned int oy) {
+// 	for(int32_t y = 0;y < height;y++) {
+// 		for(int32_t x = 0;x < width;x++) {
+// 			size_t index = y * (int32_t)ceil(width / 8.0) + x / 8;
+// 			uint8_t location = x % 8;
+// 			uint8_t highLow = location % 2;
+// 			uint8_t color;
+// 			char attribute[10];
+// 			if(highLow) {
+// 				color = (image[index] >> ((location - 1) * 4)) & 0x0F;
+// 			} else {
+// 				color = (image[index] >> ((location + 1) * 4)) & 0x0F;
+// 			}
+// 			setPixelColor(ox + x, oy + height - 1 - y, color);
+// 		}
+// 	}
+// }
+
+void drawImage(unsigned int ox, unsigned int oy, Image image) {
+	unsigned int y;
+	for(y = 0;y < image.height;y++) {
+		unsigned int x;
+		for(x = 0;x < image.width;x++) setPixelColor(ox + x, oy + y, image.data[image.width * y + x]);
 	}
 }
 
@@ -152,7 +177,6 @@ void initialize() {
 	CONSOLE_FONT_INFOEX font;
 	DWORD mode;
 	if(initLogger()) printf("Failed to Initialize the logger.");
-	loadBmp("hero.bmp", &image, &width, &height);
 	CONSOLE_CURSOR_INFO cursor = { 1, FALSE };
 	window = GetConsoleWindow();
 	store = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -172,6 +196,7 @@ void initialize() {
 	pushWindowSize();
 	SetConsoleActiveScreenBuffer(screen);
 	popWindowSize();
+	loadBmp("hero.bmp", &hero);
 }
 
 BOOL pollEvents() {
@@ -232,7 +257,7 @@ int y = 0;
 void draw() {
 	memset(buffer, 0, bufferSize);
 	drawCircle(50, 50, 50, 1);
-	drawImage(100, 100);
+	drawImage(100, 100, hero);
 	flush();
 }
 
@@ -250,7 +275,7 @@ void deinitialize() {
 	CloseHandle(screen);
 	CloseHandle(store);
 	free(buffer);
-	free(image);
+	free(hero.data);
 	closeLogger();
 }
 
