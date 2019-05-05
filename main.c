@@ -2,21 +2,16 @@
 #include<math.h>
 #include<stdint.h>
 #include<windows.h>
+#include<time.h>
 
-#include "./include/logger.h"
+#include "./include/matrix.h"
+#include "./include/graphics.h"
 #include "./include/colors.h"
-#include "./include/bitmap.h"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 
 #define NOF_MAX_EVENTS 10
-
-typedef struct {
-	unsigned int width;
-	unsigned int height;
-	char *data;
-} Image;
 
 HWND window;
 HANDLE store;
@@ -24,142 +19,13 @@ HANDLE input;
 HANDLE screen;
 char *buffer;
 size_t bufferSize;
-COORD bufferSizeCoord = { 200, 200 };
+COORD bufferSizeCoord = { 300, 300 };
 INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
 
 Image hero;
+Image background;
 
-BOOL loadBmp(char *fileName, Image *image) {
-	FILE *file;
-	BitmapHeader header;
-	BitmapInfoHeader infoHeader;
-	uint32_t *img;
-	char *result;
-	if(fopen_s(&file, fileName, "rb")) {
-		fprintf(stderr, "Failed to open the file '%s'\n", fileName);
-		return FALSE;
-	}
-	if(fread_s(&header, sizeof(BitmapHeader), 1, sizeof(BitmapHeader), file) != sizeof(BitmapHeader)) {
-		fprintf(stderr, "BMP header does not exist in the file '%s'\n", fileName);
-		return FALSE;
-	}
-	if(header.magicNumber[0] != 'B' || header.magicNumber[1] != 'M') {
-		fprintf(stderr, "Unknown magic number.\n");
-		return FALSE;
-	}
-	if(header.dibSize != 40) {
-		fprintf(stderr, "Unknown DIB header type.\n");
-		return  FALSE;
-	}
-	if(fread_s(&infoHeader, sizeof(BitmapInfoHeader), 1, sizeof(BitmapInfoHeader), file) != sizeof(BitmapInfoHeader)) {
-		fprintf(stderr, "Failed to load Bitmap info header.\n");
-		return FALSE;
-	}
-	if(infoHeader.width < 0 || infoHeader.height < 0) {
-		fprintf(stderr, "Negative demensions are not supported.\n");
-		return FALSE;
-	}
-	if(infoHeader.compressionMethod != 0) {
-		fprintf(stderr, "Compressions are not supported.\n");
-		return FALSE;
-	}
-	if(fseek(file, header.offset, SEEK_SET)) {
-		fprintf(stderr, "Image data does not exist.\n");
-		return FALSE;
-	}
-	img = (uint32_t*)malloc(infoHeader.imageSize);
-	if(fread_s(img, infoHeader.imageSize, 1, infoHeader.imageSize, file) != infoHeader.imageSize) {
-		fprintf(stderr, "Image data is corrupted.\n");
-		return FALSE;
-	}
-	image->width = infoHeader.width;
-	image->height = infoHeader.height;
-	result = (char*)malloc(image->width * image->height);
-	int32_t y;
-	for(y = 0;y < image->height;y++) {
-		int32_t x;
-		for(x = 0;x < image->width;x++) {
-			size_t index = y * (int32_t)ceil(image->width / 8.0) + x / 8;
-			uint8_t location = x % 8;
-			uint8_t highLow = location % 2;
-			uint8_t color;
-			if(highLow) {
-				color = (img[index] >> ((location - 1) * 4)) & 0x0F;
-			} else {
-				color = (img[index] >> ((location + 1) * 4)) & 0x0F;
-			}
-			result[image->width * (image->height - 1 - y) + x] = color;
-		}
-	}
-	image->data = result;
-	fclose(file);
-	return TRUE;
-}
-
-void setPixelColor(unsigned int x, unsigned int y, char color) {
-	// matrix;
-	buffer[bufferSizeCoord.X * y + x] = color;
-}
-
-// void drawImage(unsigned int ox, unsigned int oy) {
-// 	for(int32_t y = 0;y < height;y++) {
-// 		for(int32_t x = 0;x < width;x++) {
-// 			size_t index = y * (int32_t)ceil(width / 8.0) + x / 8;
-// 			uint8_t location = x % 8;
-// 			uint8_t highLow = location % 2;
-// 			uint8_t color;
-// 			char attribute[10];
-// 			if(highLow) {
-// 				color = (image[index] >> ((location - 1) * 4)) & 0x0F;
-// 			} else {
-// 				color = (image[index] >> ((location + 1) * 4)) & 0x0F;
-// 			}
-// 			setPixelColor(ox + x, oy + height - 1 - y, color);
-// 		}
-// 	}
-// }
-
-void drawImage(unsigned int ox, unsigned int oy, Image image) {
-	unsigned int y;
-	for(y = 0;y < image.height;y++) {
-		unsigned int x;
-		for(x = 0;x < image.width;x++) setPixelColor(ox + x, oy + y, image.data[image.width * y + x]);
-	}
-}
-
-int drawRect(HANDLE screen, unsigned int px, unsigned int py, unsigned int width, unsigned int height) {
-	DWORD nofWritten;
-	COORD cursor;
-	size_t size = width + 1;
-	char *line = (char*)malloc(size);
-	if(line == NULL) return FALSE;
-	unsigned int i;
-	for(i = 0;i < size - 1;i++) line[i] = ' ';
-	line[i] = '\0';
-	SetConsoleTextAttribute(screen, BG_WHITE);
-	cursor.X = px;
-	unsigned int y;
-	for(y = py;y < py + height;y++) {
-		cursor.Y = y;
-		SetConsoleCursorPosition(screen, cursor);
-		WriteConsole(screen, line, size, &nofWritten, NULL);
-	}
-	SetConsoleTextAttribute(screen, FG_WHITE | BG_BLACK);
-	free(line);
-	return TRUE;
-}
-
-void drawCircle(unsigned int ox, unsigned int oy, unsigned int radius, char color) {
-	int y;
-	for(y = 0;y < 2 * radius;y++) {
-		int x;
-		for(x = 0;x < 2 * radius;x++) {
-			int cx = x - radius;
-			int cy = y - radius;
-			if(radius * radius >= cx * cx + cy * cy) setPixelColor(x + ox, y + oy, color);
-		}
-	}
-}
+int position[2];
 
 RECT storedSize;
 void pushWindowSize() {
@@ -172,17 +38,13 @@ void popWindowSize() {
 	MoveWindow(window, storedSize.left, storedSize.top, storedSize.right - storedSize.left, storedSize.bottom - storedSize.top, FALSE);
 }
 
-
 void initialize() {
 	CONSOLE_FONT_INFOEX font;
 	DWORD mode;
-	if(initLogger()) printf("Failed to Initialize the logger.");
-	CONSOLE_CURSOR_INFO cursor = { 1, FALSE };
 	window = GetConsoleWindow();
 	store = GetStdHandle(STD_OUTPUT_HANDLE);
 	input = GetStdHandle(STD_INPUT_HANDLE);
 	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
-	SetConsoleTitle("Picture");
 	GetConsoleMode(store, &mode);
 	SetConsoleMode(screen, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 	font.cbSize = sizeof(CONSOLE_FONT_INFOEX);
@@ -190,13 +52,13 @@ void initialize() {
 	font.dwFontSize.X = 1;
 	font.dwFontSize.Y = 1;
 	SetCurrentConsoleFontEx(screen, FALSE, &font);
-	SetConsoleCursorInfo(screen, &cursor);
 	bufferSize = bufferSizeCoord.X * bufferSizeCoord.Y;
 	buffer = (char*)malloc(bufferSize);
 	pushWindowSize();
 	SetConsoleActiveScreenBuffer(screen);
 	popWindowSize();
-	loadBmp("hero.bmp", &hero);
+	loadImage("assets/hero.bmp", &hero);
+	loadImage("assets/Gochi.bmp", &background);
 }
 
 BOOL pollEvents() {
@@ -209,6 +71,18 @@ BOOL pollEvents() {
 			if(keyEvent->bKeyDown) {
 				switch(keyEvent->uChar.AsciiChar) {
 					case 'q': return FALSE;
+					case 'w':
+						position[1] -= 2;
+						break;
+					case 's':
+						position[1] += 2;
+						break;
+					case 'a':
+						position[0] -= 2;
+						break;
+					case 'd':
+						position[0] += 2;
+						break;
 				}
 			}
 			break;
@@ -219,11 +93,19 @@ BOOL pollEvents() {
 }
 
 void flush() {
+	static char colors[][10] = {
+		"\x1b[40m ", "\x1b[41m ", "\x1b[42m ", "\x1b[43m ",
+		"\x1b[44m ", "\x1b[45m ", "\x1b[46m ", "\x1b[47m ",
+		"\x1b[100m ", "\x1b[101m ", "\x1b[102m ", "\x1b[103m ",
+		"\x1b[104m ", "\x1b[105m ", "\x1b[106m ", "\x1b[107m "
+	};
+	static CONSOLE_CURSOR_INFO cursor = { 1, FALSE };
 	DWORD nofWritten;
 	size_t bufferSize = (bufferSizeCoord.X * 8 + 20) * bufferSizeCoord.Y;
 	char temp[20], temp2[10];
 	char *data = (char*)malloc(bufferSize);
 	char previousColor = 0xFF;
+	size_t dataIndex = 0;
 	data[0] = '\0';
 	unsigned int row;
 	for(row = 0;row < bufferSizeCoord.Y;row++) {
@@ -232,32 +114,31 @@ void flush() {
 		_itoa_s(row, temp2, sizeof(temp2), 10);
 		strcat_s(temp, sizeof(temp), temp2);
 		strcat_s(temp, sizeof(temp), ";0H");
-		strcat_s(data, bufferSize, temp);
+		strcat_s(&data[dataIndex], bufferSize, temp);
+		dataIndex += strlen(temp2) + 4;
 		unsigned int col;
 		for(col = 0;col < bufferSizeCoord.X;col++) {
 			size_t index = bufferSizeCoord.X * row + col;
 			if(buffer[index] == previousColor) {
-				strcat_s(data, bufferSize, " ");
+				strcat_s(&data[dataIndex], bufferSize, " ");
+				dataIndex += 1;
 			} else {
-				temp[0] = '\0';
-				strcat_s(temp, sizeof(temp), "\x1b[");
-				_itoa_s(buffer[index] + (buffer[index] < 8 ? 40 : 92), temp2, sizeof(temp2), 10);
-				strcat_s(temp, sizeof(temp), temp2);
-				strcat_s(temp, sizeof(temp), "m ");
-				strcat_s(data, bufferSize, temp);
+				strcat_s(&data[dataIndex], bufferSize, colors[buffer[index]]);
+				dataIndex += strlen(colors[buffer[index]]);
 			}
 			previousColor = buffer[index];
 		}
 	}
 	WriteConsole(screen, data, strlen(data), &nofWritten, NULL);
+	SetConsoleCursorInfo(screen, &cursor);
 	free(data);
 }
 
-int y = 0;
 void draw() {
 	memset(buffer, 0, bufferSize);
-	drawCircle(50, 50, 50, 1);
-	drawImage(100, 100, hero);
+	clearTransformation();
+	drawRect(0, 0, bufferSizeCoord.X, bufferSizeCoord.Y, DARK_BLUE);
+	drawImageTransformed(position[0], position[1], hero);
 	flush();
 }
 
@@ -274,9 +155,8 @@ void deinitialize() {
 	popWindowSize();
 	CloseHandle(screen);
 	CloseHandle(store);
+	discardImage(hero);
 	free(buffer);
-	free(hero.data);
-	closeLogger();
 }
 
 int main() {
