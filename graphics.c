@@ -11,15 +11,20 @@
 extern char *buffer;
 extern COORD bufferSizeCoord;
 
-float transformation[2][2];
+float transformation[3][3];
 
-float matrixStore[64][2][2];
+float matrixStore[64][3][3];
 unsigned int currentStore = 0;
 void pushTransformation() {
 	matrixStore[currentStore][0][0] = transformation[0][0];
 	matrixStore[currentStore][0][1] = transformation[0][1];
+	matrixStore[currentStore][0][2] = transformation[0][2];
 	matrixStore[currentStore][1][0] = transformation[1][0];
 	matrixStore[currentStore][1][1] = transformation[1][1];
+	matrixStore[currentStore][1][2] = transformation[1][2];
+	matrixStore[currentStore][2][0] = transformation[2][0];
+	matrixStore[currentStore][2][1] = transformation[2][1];
+	matrixStore[currentStore][2][2] = transformation[2][2];
 	currentStore += 1;
 }
 
@@ -27,24 +32,35 @@ void popTransformation() {
 	currentStore -= 1;
 	transformation[0][0] = matrixStore[currentStore][0][0];
 	transformation[0][1] = matrixStore[currentStore][0][1];
+	transformation[0][2] = matrixStore[currentStore][0][2];
 	transformation[1][0] = matrixStore[currentStore][1][0];
 	transformation[1][1] = matrixStore[currentStore][1][1];
+	transformation[1][2] = matrixStore[currentStore][1][2];
+	transformation[2][0] = matrixStore[currentStore][2][0];
+	transformation[2][1] = matrixStore[currentStore][2][1];
+	transformation[2][2] = matrixStore[currentStore][2][2];
 }
 
 void clearTransformation() {
-	genIdentityMat2(transformation);
+	genIdentityMat3(transformation);
+}
+
+void translateTransformation(float dx, float dy) {
+	float temp1[3][3], temp2[3][3];
+	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
+	mulMat3(genTranslationMat3(dx, dy, temp1), temp2, transformation);
 }
 
 void scaleTransformation(float sx, float sy) {
-	float temp1[2][2], temp2[2][2];
+	float temp1[3][3], temp2[3][3];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat2(genScaleMat2(sx, sy, temp1), temp2, transformation);
+	mulMat3(genScaleMat3(sx, sy, temp1), temp2, transformation);
 }
 
 void rotateTransformation(float rotation) {
-	float temp1[2][2], temp2[2][2];
+	float temp1[3][3], temp2[3][3];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat2(genRotationMat2(rotation, temp1), temp2, transformation);
+	mulMat3(genRotationMat3(rotation, temp1), temp2, transformation);
 }
 
 void setPixelColor(int x, int y, char color) {
@@ -53,32 +69,24 @@ void setPixelColor(int x, int y, char color) {
 	}
 }
 
-void fillBuffer(int ox, int oy, unsigned int width, unsigned int height, char *data, char transparent, int shadow) {
-	float halfWidth = width / 2.0;
-	float halfHeight = height / 2.0;
-	float leftTop[2] = { -halfWidth, -halfHeight };
-	float leftBottom[2] = { -halfWidth, halfHeight };
-	float rightTop[2] = { halfWidth, -halfHeight };
-	float rightBottom[2] = { halfWidth, halfHeight };
-	float transformedLeftTop[2];
-	float transformedLeftBottom[2];
-	float transformedRightTop[2];
-	float transformedRightBottom[2];
+void fillBuffer(Image image, int shadow) {
+	float halfWidth = image.width / 2.0;
+	float halfHeight = image.height / 2.0;
+	float leftTop[3] = { -halfWidth, -halfHeight, 1.0 };
+	float leftBottom[3] = { -halfWidth, halfHeight, 1.0 };
+	float rightTop[3] = { halfWidth, -halfHeight, 1.0 };
+	float rightBottom[3] = { halfWidth, halfHeight, 1.0 };
+	float transformedLeftTop[3];
+	float transformedLeftBottom[3];
+	float transformedRightTop[3];
+	float transformedRightBottom[3];
 	int maxCoord[2], minCoord[2];
 	float axisX[2], axisY[2];
 	float axisXLen, axisYLen;
-	mulMat2Vec2(transformation, leftTop, transformedLeftTop);
-	mulMat2Vec2(transformation, leftBottom, transformedLeftBottom);
-	mulMat2Vec2(transformation, rightTop, transformedRightTop);
-	mulMat2Vec2(transformation, rightBottom, transformedRightBottom);
-	transformedLeftTop[0] += ox;
-	transformedLeftTop[1] += oy;
-	transformedLeftBottom[0] += ox;
-	transformedLeftBottom[1] += oy;
-	transformedRightTop[0] += ox;
-	transformedRightTop[1] += oy;
-	transformedRightBottom[0] += ox;
-	transformedRightBottom[1] += oy;
+	mulMat3Vec3(transformation, leftTop, transformedLeftTop);
+	mulMat3Vec3(transformation, leftBottom, transformedLeftBottom);
+	mulMat3Vec3(transformation, rightTop, transformedRightTop);
+	mulMat3Vec3(transformation, rightBottom, transformedRightBottom);
 	maxCoord[0] = min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), bufferSizeCoord.X);
 	maxCoord[1] = min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), bufferSizeCoord.Y);
 	minCoord[0] = max(min(min(transformedLeftTop[0], transformedLeftBottom[0]), min(transformedRightTop[0], transformedRightBottom[0])), 0);
@@ -87,8 +95,8 @@ void fillBuffer(int ox, int oy, unsigned int width, unsigned int height, char *d
 	axisX[1] = transformedRightTop[1] - transformedLeftTop[1];
 	axisY[0] = transformedLeftBottom[0] - transformedLeftTop[0];
 	axisY[1] = transformedLeftBottom[1] - transformedLeftTop[1];
-	axisXLen = length(axisX);
-	axisYLen = length(axisY);
+	axisXLen = length2(axisX);
+	axisYLen = length2(axisY);
 	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
 		unsigned int x;
@@ -96,12 +104,12 @@ void fillBuffer(int ox, int oy, unsigned int width, unsigned int height, char *d
 			float vector[2] = { x - transformedLeftTop[0], y - transformedLeftTop[1] };
 			float dataCoords[2] = { dot2(vector, axisX) / (axisXLen * axisXLen), dot2(vector, axisY) / (axisYLen * axisYLen) };
 			if(dataCoords[0] >= 0.0 && dataCoords[0] < 1.0 && dataCoords[1] >= 0.0 && dataCoords[1] < 1.0) {
-				char color = data[width * min((unsigned int)round(height * dataCoords[1]), height - 1) + min((unsigned int)round(width * dataCoords[0]), width - 1)];
-				if(color != transparent) {
+				char color = image.data[image.width * min((unsigned int)round(image.height * dataCoords[1]), image.height - 1) + min((unsigned int)round(image.width * dataCoords[0]), image.width - 1)];
+				if(color != image.transparent) {
 					size_t index = bufferSizeCoord.X * y + x;
 					if(shadow) {
 						if((buffer[index] >> 3) & 1) {
-							color = buffer[index] ^ 0x0F;
+							color = buffer[index] ^ 0x0E;
 						} else {
 							color = BLACK;
 						}
@@ -181,37 +189,44 @@ BOOL loadBitmap(char *fileName, Image *image, char transparent) {
 	return TRUE;
 }
 
-void discardImage(Image image) {
-	free(image.data);
-}
-
-void drawImage(int ox, int oy, Image image, char transparent) {
-	unsigned int y;
-	for(y = 0;y < image.height;y++) {
-		unsigned int x;
-		for(x = 0;x < image.width;x++) {
-			char color = image.data[image.width * y + x];
-			if(color != transparent) setPixelColor(ox + x, oy + y, color);
-		}
-	}
-}
-
-void drawRect(int ox, int oy, unsigned int width, unsigned int height, char color) {
+int drawRect(unsigned int width, unsigned int height, char color, Image *image) {
+	image->data = malloc(width * height);
+	if(image->data == NULL) return FALSE;
+	image->width = width;
+	image->height = height;
+	image->transparent = NULL_COLOR;
   unsigned int y;
-	for(y = 0;y < height;y++) {
+	for(y = 0;y < image->height;y++) {
     unsigned int x;
-    for(x = 0;x < width;x++) setPixelColor(x + ox, y + oy, color);
+    for(x = 0;x < image->width;x++) image->data[image->width * y + x] = color;
 	}
+	return TRUE;
 }
 
-void drawCircle(int ox, int oy, unsigned int radius, char color) {
+int drawCircle(unsigned int radius, char color, Image *image) {
+	int edgeWidth = 2 * radius;
+	image->data = malloc(edgeWidth * edgeWidth);
+	if(image->data == NULL) return FALSE;
+	image->width = edgeWidth;
+	image->height = edgeWidth;
+	image->transparent = color ^ 0x0F;
 	int y;
-	for(y = 0;y < 2 * radius;y++) {
+	for(y = 0;y < edgeWidth;y++) {
 		int x;
-		for(x = 0;x < 2 * radius;x++) {
+		for(x = 0;x < edgeWidth;x++) {
 			int cx = x - radius;
 			int cy = y - radius;
-			if(radius * radius >= cx * cx + cy * cy) setPixelColor(x + ox, y + oy, color);
+			size_t index = edgeWidth * y + x;
+			if(radius * radius >= cx * cx + cy * cy) {
+				image->data[index] = color;
+			} else {
+				image->data[index] = image->transparent;
+			}
 		}
 	}
+	return TRUE;
+}
+
+void discardImage(Image image) {
+	free(image.data);
 }
