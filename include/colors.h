@@ -6,6 +6,7 @@ typedef enum {
   DARK_BLUE,  DARK_MAGENTA, DARK_CYAN,  DARK_GRAY,
   GRAY, RED,  GREEN,  YELLOW,
   BLUE, MAGENTA,  CYAN, WHITE,
+  NULL_COLOR,
 } Color;
 
 #endif

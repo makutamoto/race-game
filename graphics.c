@@ -6,13 +6,14 @@
 #include "./include/matrix.h"
 #include "./include/graphics.h"
 #include "./include/bitmap.h"
+#include "./include/colors.h"
 
 extern char *buffer;
 extern COORD bufferSizeCoord;
 
 float transformation[2][2];
 
-float matrixStore[10][2][2];
+float matrixStore[64][2][2];
 unsigned int currentStore = 0;
 void pushTransformation() {
 	matrixStore[currentStore][0][0] = transformation[0][0];
@@ -52,7 +53,7 @@ void setPixelColor(int x, int y, char color) {
 	}
 }
 
-void fillBuffer(int ox, int oy, unsigned int width, unsigned int height, char *data) {
+void fillBuffer(int ox, int oy, unsigned int width, unsigned int height, char *data, char transparent, int shadow) {
 	float halfWidth = width / 2.0;
 	float halfHeight = height / 2.0;
 	float leftTop[2] = { -halfWidth, -halfHeight };
@@ -95,13 +96,24 @@ void fillBuffer(int ox, int oy, unsigned int width, unsigned int height, char *d
 			float vector[2] = { x - transformedLeftTop[0], y - transformedLeftTop[1] };
 			float dataCoords[2] = { dot2(vector, axisX) / (axisXLen * axisXLen), dot2(vector, axisY) / (axisYLen * axisYLen) };
 			if(dataCoords[0] >= 0.0 && dataCoords[0] < 1.0 && dataCoords[1] >= 0.0 && dataCoords[1] < 1.0) {
-					buffer[bufferSizeCoord.X * y + x] = data[width * min((unsigned int)round(height * dataCoords[1]), height - 1) + min((unsigned int)round(width * dataCoords[0]), width - 1)];
+				char color = data[width * min((unsigned int)round(height * dataCoords[1]), height - 1) + min((unsigned int)round(width * dataCoords[0]), width - 1)];
+				if(color != transparent) {
+					size_t index = bufferSizeCoord.X * y + x;
+					if(shadow) {
+						if((buffer[index] >> 3) & 1) {
+							color = buffer[index] ^ 0x0F;
+						} else {
+							color = BLACK;
+						}
+					}
+					buffer[index] = color;
+				}
 			}
 		}
 	}
 }
 
-BOOL loadImage(char *fileName, Image *image) {
+BOOL loadBitmap(char *fileName, Image *image, char transparent) {
 	FILE *file;
 	BitmapHeader header;
 	BitmapInfoHeader infoHeader;
@@ -146,6 +158,7 @@ BOOL loadImage(char *fileName, Image *image) {
 	}
 	image->width = infoHeader.width;
 	image->height = infoHeader.height;
+	image->transparent = transparent;
 	result = (char*)malloc(image->width * image->height);
 	int32_t y;
 	for(y = 0;y < image->height;y++) {
@@ -172,25 +185,22 @@ void discardImage(Image image) {
 	free(image.data);
 }
 
-void drawImage(int ox, int oy, Image image) {
+void drawImage(int ox, int oy, Image image, char transparent) {
 	unsigned int y;
 	for(y = 0;y < image.height;y++) {
 		unsigned int x;
-		for(x = 0;x < image.width;x++) setPixelColor(ox + x, oy + y, image.data[image.width * y + x]);
+		for(x = 0;x < image.width;x++) {
+			char color = image.data[image.width * y + x];
+			if(color != transparent) setPixelColor(ox + x, oy + y, color);
+		}
 	}
-}
-
-void drawImageTransformed(int ox, int oy, Image image) {
-	fillBuffer(ox, oy, image.width, image.height, image.data);
 }
 
 void drawRect(int ox, int oy, unsigned int width, unsigned int height, char color) {
   unsigned int y;
 	for(y = 0;y < height;y++) {
     unsigned int x;
-    for(x = 0;x < width;x++) {
-      setPixelColor(x + ox, y + oy, color);
-    }
+    for(x = 0;x < width;x++) setPixelColor(x + ox, y + oy, color);
 	}
 }
 

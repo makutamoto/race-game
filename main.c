@@ -13,6 +13,19 @@
 
 #define NOF_MAX_EVENTS 10
 
+typedef struct {
+	char id[10];
+	float velocity[2];
+	float angVelocity;
+	float position[2];
+	float angle;
+	float scale[2];
+	float shadowScale;
+	float shadowOffset[2];
+	Image *image;
+	Sprite *children[10];
+}	Sprite;
+
 HWND window;
 HANDLE store;
 HANDLE input;
@@ -25,7 +38,40 @@ INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
 Image hero;
 Image background;
 
-int position[2];
+Sprite heroSprite;
+
+void initSprite(Sprite *sprite, const char *id, Image *image) {
+	memcpy_s(sprite->id, sizeof(sprite->id), id, min( sizeof(sprite->id), strlen(id)));
+	sprite->velocity[0] = 0.0;
+	sprite->velocity[1] = 0.0;
+	sprite->angVelocity = 0.0;
+	sprite->position[0] = 0.0;
+	sprite->position[1] = 0.0;
+	sprite->angle = 0.0;
+	sprite->scale[0] = 1.0;
+	sprite->scale[1] = 1.0;
+	sprite->shadowScale = 0.0;
+	sprite->shadowOffset[0] = 0.0;
+	sprite->shadowOffset[1] = 0.0;
+	sprite->image = image;
+	int i;
+	for(i = 0;i < sizeof(sprite->children) / sizeof(*Sprite);i++) sprite->children[i] = NULL;
+}
+
+void drawSprite(Sprite sprite) {
+	pushTransformation();
+	scaleTransformation(sprite.scale[0], sprite.scale[1]);
+	rotateTransformation(sprite.angle);
+	for(i = 0;i < sizeof(sprite->children) / sizeof(*Sprite);i++)
+		if(sprite.children[i] != NULL) drawSprite(sprite.children[i]); 
+	}
+	pushTransformation();
+	scaleTransformation(sprite.shadowScale, sprite.shadowScale);
+	if(sprite.shadowOffset[0] != 0.0 || sprite.shadowOffset[1] != 0.0) fillBuffer(sprite.position[0] + sprite.shadowOffset[0], sprite.position[1] + sprite.shadowOffset[1], sprite.image->width, sprite.image->height, sprite.image->data, sprite.image->transparent, TRUE);
+	popTransformation();
+	fillBuffer(sprite.position[0], sprite.position[1], sprite.image->width, sprite.image->height, sprite.image->data, sprite.image->transparent, FALSE);
+	popTransformation();
+}
 
 RECT storedSize;
 void pushWindowSize() {
@@ -57,8 +103,11 @@ void initialize() {
 	pushWindowSize();
 	SetConsoleActiveScreenBuffer(screen);
 	popWindowSize();
-	loadImage("assets/hero.bmp", &hero);
-	loadImage("assets/Gochi.bmp", &background);
+	loadBitmap("assets/hero.bmp", &hero, BLACK);
+	loadBitmap("assets/Gochi.bmp", &background, NULL_COLOR);
+	initSprite(&heroSprite, "Hero", &hero);
+	heroSprite.shadowScale = 0.75;
+	heroSprite.shadowOffset[1] = 10.0;
 }
 
 BOOL pollEvents() {
@@ -72,16 +121,16 @@ BOOL pollEvents() {
 				switch(keyEvent->uChar.AsciiChar) {
 					case 'q': return FALSE;
 					case 'w':
-						position[1] -= 2;
+						heroSprite.position[1] -= 2;
 						break;
 					case 's':
-						position[1] += 2;
+						heroSprite.position[1] += 2;
 						break;
 					case 'a':
-						position[0] -= 2;
+						heroSprite.position[0] -= 2;
 						break;
 					case 'd':
-						position[0] += 2;
+						heroSprite.position[0] += 2;
 						break;
 				}
 			}
@@ -138,7 +187,7 @@ void draw() {
 	memset(buffer, 0, bufferSize);
 	clearTransformation();
 	drawRect(0, 0, bufferSizeCoord.X, bufferSizeCoord.Y, DARK_BLUE);
-	drawImageTransformed(position[0], position[1], hero);
+	drawSprite(heroSprite);
 	flush();
 }
 

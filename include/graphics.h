@@ -4,6 +4,7 @@
 typedef struct {
 	unsigned int width;
 	unsigned int height;
+	char transparent;
 	char *data;
 } Image;
 
@@ -13,13 +14,11 @@ void clearTransformation();
 void scaleTransformation(float sx, float sy);
 void rotateTransformation(float rotation);
 
-void fillBuffer(int x, int y, unsigned int width, unsigned int height, char *data);
-void setPixelColor(int x, int y, char color);
+void fillBuffer(int ox, int oy, unsigned int width, unsigned int height, char *data, char transparent, int shadow);
 
-BOOL loadImage(char *fileName, Image *image);
+BOOL loadBitmap(char *fileName, Image *image, char transparent);
 void discardImage(Image image);
-void drawImage(int ox, int oy, Image image);
-void drawImageTransformed(int ox, int oy, Image image);
+void drawImage(int ox, int oy, Image image, char transparent);
 
 void drawRect(int ox, int oy, unsigned int width, unsigned int height, char color);
 void drawCircle(int ox, int oy, unsigned int radius, char color);
