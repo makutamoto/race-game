@@ -8,6 +8,7 @@
 #include "./include/graphics.h"
 #include "./include/colors.h"
 #include "./include/sprite.h"
+#include "./include/vector.h"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -60,11 +61,11 @@ void initialize() {
 	pushWindowSize();
 	SetConsoleActiveScreenBuffer(screen);
 	popWindowSize();
-	loadBitmap("assets/hero.bmp", &hero, BLACK);
-	loadBitmap("assets/Gochi.bmp", &background, NULL_COLOR);
-	drawCircle(32, RED, &childImage);
-	initSprite(&heroSprite, "Hero", &hero);
-	initSprite(&child, "child", &childImage);
+	hero = loadBitmap("assets/hero.bmp", BLACK);
+	background = loadBitmap("assets/Gochi.bmp", NULL_COLOR);
+	childImage = genCircle(32, RED);
+	heroSprite = initSprite("Hero", hero);
+	child = initSprite("child", childImage);
 	heroSprite.shadowScale = 0.75;
 	heroSprite.shadowOffset[1] = 10.0;
 	child.position[0] = 10.0;
@@ -166,7 +167,9 @@ void deinitialize() {
 	popWindowSize();
 	CloseHandle(screen);
 	CloseHandle(store);
-	discardImage(hero);
+	freeImage(hero);
+	freeImage(background);
+	freeImage(childImage);
 	free(buffer);
 }
 

@@ -121,58 +121,58 @@ void fillBuffer(Image image, int shadow) {
 	}
 }
 
-BOOL loadBitmap(char *fileName, Image *image, char transparent) {
+Image loadBitmap(char *fileName, char transparent) {
+	Image image = { 0, 0, NULL_COLOR, NULL };
 	FILE *file;
 	BitmapHeader header;
 	BitmapInfoHeader infoHeader;
 	uint32_t *img;
-	char *result;
 	if(fopen_s(&file, fileName, "rb")) {
 		fprintf(stderr, "Failed to open the file '%s'\n", fileName);
-		return FALSE;
+		return image;
 	}
 	if(fread_s(&header, sizeof(BitmapHeader), 1, sizeof(BitmapHeader), file) != sizeof(BitmapHeader)) {
 		fprintf(stderr, "BMP header does not exist in the file '%s'\n", fileName);
-		return FALSE;
+		return image;
 	}
 	if(header.magicNumber[0] != 'B' || header.magicNumber[1] != 'M') {
 		fprintf(stderr, "Unknown magic number.\n");
-		return FALSE;
+		return image;
 	}
 	if(header.dibSize != 40) {
 		fprintf(stderr, "Unknown DIB header type.\n");
-		return  FALSE;
+		return  image;
 	}
 	if(fread_s(&infoHeader, sizeof(BitmapInfoHeader), 1, sizeof(BitmapInfoHeader), file) != sizeof(BitmapInfoHeader)) {
 		fprintf(stderr, "Failed to load Bitmap info header.\n");
-		return FALSE;
+		return image;
 	}
 	if(infoHeader.width < 0 || infoHeader.height < 0) {
 		fprintf(stderr, "Negative demensions are not supported.\n");
-		return FALSE;
+		return image;
 	}
 	if(infoHeader.compressionMethod != 0) {
 		fprintf(stderr, "Compressions are not supported.\n");
-		return FALSE;
+		return image;
 	}
 	if(fseek(file, header.offset, SEEK_SET)) {
 		fprintf(stderr, "Image data does not exist.\n");
-		return FALSE;
+		return image;
 	}
 	img = (uint32_t*)malloc(infoHeader.imageSize);
 	if(fread_s(img, infoHeader.imageSize, 1, infoHeader.imageSize, file) != infoHeader.imageSize) {
 		fprintf(stderr, "Image data is corrupted.\n");
-		return FALSE;
+		return image;
 	}
-	image->width = infoHeader.width;
-	image->height = infoHeader.height;
-	image->transparent = transparent;
-	result = (char*)malloc(image->width * image->height);
+	image.width = infoHeader.width;
+	image.height = infoHeader.height;
+	image.transparent = transparent;
+	image.data = (char*)malloc(image.width * image.height);
 	int32_t y;
-	for(y = 0;y < image->height;y++) {
+	for(y = 0;y < image.height;y++) {
 		int32_t x;
-		for(x = 0;x < image->width;x++) {
-			size_t index = y * (int32_t)ceil(image->width / 8.0) + x / 8;
+		for(x = 0;x < image.width;x++) {
+			size_t index = y * (int32_t)ceil(image.width / 8.0) + x / 8;
 			uint8_t location = x % 8;
 			uint8_t highLow = location % 2;
 			uint8_t color;
@@ -181,35 +181,48 @@ BOOL loadBitmap(char *fileName, Image *image, char transparent) {
 			} else {
 				color = (img[index] >> ((location + 1) * 4)) & 0x0F;
 			}
-			result[image->width * (image->height - 1 - y) + x] = color;
+			image.data[image.width * (image.height - 1 - y) + x] = color;
 		}
 	}
-	image->data = result;
 	fclose(file);
-	return TRUE;
+	return image;
 }
 
-int drawRect(unsigned int width, unsigned int height, char color, Image *image) {
-	image->data = malloc(width * height);
-	if(image->data == NULL) return FALSE;
-	image->width = width;
-	image->height = height;
-	image->transparent = NULL_COLOR;
-  unsigned int y;
-	for(y = 0;y < image->height;y++) {
-    unsigned int x;
-    for(x = 0;x < image->width;x++) image->data[image->width * y + x] = color;
+Image genRect(unsigned int width, unsigned int height, char color) {
+	Image image;
+	image.data = (char*)malloc(width * height);
+	if(image.data == NULL) {
+		image.width = 0;
+		image.height = 0;
+		image.transparent = NULL_COLOR;
+		image.data = NULL;
+		return image;
 	}
-	return TRUE;
+	image.width = width;
+	image.height = height;
+	image.transparent = NULL_COLOR;
+  unsigned int y;
+	for(y = 0;y < image.height;y++) {
+    unsigned int x;
+    for(x = 0;x < image.width;x++) image.data[image.width * y + x] = color;
+	}
+	return image;
 }
 
-int drawCircle(unsigned int radius, char color, Image *image) {
+Image genCircle(unsigned int radius, char color) {
+	Image image;
 	int edgeWidth = 2 * radius;
-	image->data = malloc(edgeWidth * edgeWidth);
-	if(image->data == NULL) return FALSE;
-	image->width = edgeWidth;
-	image->height = edgeWidth;
-	image->transparent = color ^ 0x0F;
+	image.data = malloc(edgeWidth * edgeWidth);
+	if(image.data == NULL) {
+		image.width = 0;
+		image.height = 0;
+		image.transparent = NULL_COLOR;
+		image.data = NULL;
+		return image;
+	}
+	image.width = edgeWidth;
+	image.height = edgeWidth;
+	image.transparent = color ^ 0x0F;
 	int y;
 	for(y = 0;y < edgeWidth;y++) {
 		int x;
@@ -218,15 +231,15 @@ int drawCircle(unsigned int radius, char color, Image *image) {
 			int cy = y - radius;
 			size_t index = edgeWidth * y + x;
 			if(radius * radius >= cx * cx + cy * cy) {
-				image->data[index] = color;
+				image.data[index] = color;
 			} else {
-				image->data[index] = image->transparent;
+				image.data[index] = image.transparent;
 			}
 		}
 	}
-	return TRUE;
+	return image;
 }
 
-void discardImage(Image image) {
+void freeImage(Image image) {
 	free(image.data);
 }

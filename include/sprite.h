@@ -12,12 +12,12 @@ typedef struct _Sprite {
 	float scale[2];
 	float shadowScale;
 	float shadowOffset[2];
-	Image *image;
+	Image image;
 	struct _Sprite *parent;
 	struct _Sprite *children[10];
 }	Sprite;
 
-void initSprite(Sprite *sprite, const char *id, Image *image);
+Sprite initSprite(const char *id, Image image);
 int addChild(Sprite *parent, Sprite *child);
 void drawSprite(Sprite sprite);
 
