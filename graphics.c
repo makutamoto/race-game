@@ -48,19 +48,19 @@ void clearTransformation() {
 void translateTransformation(float dx, float dy) {
 	float temp1[3][3], temp2[3][3];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat3(genTranslationMat3(dx, dy, temp1), temp2, transformation);
+	mulMat3(temp2, genTranslationMat3(dx, dy, temp1), transformation);
 }
 
 void scaleTransformation(float sx, float sy) {
 	float temp1[3][3], temp2[3][3];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat3(genScaleMat3(sx, sy, temp1), temp2, transformation);
+	mulMat3(temp2, genScaleMat3(sx, sy, temp1), transformation);
 }
 
 void rotateTransformation(float rotation) {
 	float temp1[3][3], temp2[3][3];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat3(genRotationMat3(rotation, temp1), temp2, transformation);
+	mulMat3(temp2, genRotationMat3(rotation, temp1), transformation);
 }
 
 void setPixelColor(int x, int y, char color) {

@@ -38,18 +38,18 @@ int addChild(Sprite *parent, Sprite *child) {
 
 void drawSprite(Sprite sprite) {
 	pushTransformation();
-	scaleTransformation(sprite.scale[0], sprite.scale[1]);
-	rotateTransformation(sprite.angle);
+  translateTransformation(sprite.position[0], sprite.position[1]);
+  rotateTransformation(sprite.angle);
 	pushTransformation();
+  translateTransformation(sprite.shadowOffset[0], sprite.shadowOffset[1]);
 	scaleTransformation(sprite.shadowScale, sprite.shadowScale);
-	translateTransformation(sprite.position[0] + sprite.shadowOffset[0], sprite.position[1] + sprite.shadowOffset[1]);
 	if(sprite.shadowOffset[0] != 0.0 || sprite.shadowOffset[1] != 0.0) fillBuffer(sprite.image, TRUE);
 	popTransformation();
-	translateTransformation(sprite.position[0], sprite.position[1]);
 	int i;
 	for(i = 0;i < sizeof(sprite.children) / sizeof(Sprite*);i++) {
 		if(sprite.children[i] != NULL) drawSprite(*sprite.children[i]);
 	}
+  scaleTransformation(sprite.scale[0], sprite.scale[1]);
 	fillBuffer(sprite.image, FALSE);
 	popTransformation();
 }

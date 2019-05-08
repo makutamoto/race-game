@@ -69,6 +69,8 @@ void initialize() {
 	heroSprite.shadowScale = 0.75;
 	heroSprite.shadowOffset[1] = 10.0;
 	child.position[0] = 10.0;
+	heroSprite.angle = 3.14 / 3;
+	child.angle = 3.14 / 3;
 	addChild(&heroSprite, &child);
 }
 
