@@ -7,12 +7,14 @@
 #include "./include/graphics.h"
 #include "./include/bitmap.h"
 #include "./include/colors.h"
+#include "./include/vector.h"
 
 extern char *buffer;
 extern COORD bufferSizeCoord;
 
 float transformation[3][3];
 
+Vector matrixStore2;
 float matrixStore[64][3][3];
 unsigned int currentStore = 0;
 void pushTransformation() {

@@ -28,5 +28,6 @@ void pop(Vector *vector);
 BOOL insertAt(Vector *vector, size_t index, void *data);
 void drainAt(Vector *vector, size_t index, void **data);
 void removeAt(Vector *vector, size_t index);
+void removeByData(Vector *vector, void *data);
 
 #endif

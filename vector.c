@@ -127,8 +127,16 @@ BOOL insertAt(Vector *vector, size_t index, void *data) {
 void drainAt(Vector *vector, size_t index, void **data) {
 	VectorItem *item = ItemAt(*vector, index);
 	if(vector->currentItem == item) vector->currentItem = item->nextItem;
-	item->previousItem->nextItem = item->nextItem;
-	item->nextItem->previousItem = item->previousItem;
+	if(item->previousItem == NULL) {
+		vector->firstItem = item->nextItem;
+	} else {
+		item->previousItem->nextItem = item->nextItem;
+	}
+	if(item->nextItem == NULL) {
+		vector->lastItem = item->previousItem;
+	} else {
+		item->nextItem->previousItem = item->previousItem;
+	}
 	*data = item->data;
 	free(item);
 	vector->length -= 1;
@@ -138,6 +146,19 @@ void removeAt(Vector *vector, size_t index) {
 	void *data;
 	drainAt(vector, index, &data);
 	free(data);
+}
+
+void removeByData(Vector *vector, void *data) {
+	void *currentData;
+	size_t index = 0;
+	resetIteration(vector);
+	while((currentData = nextData(vector))) {
+		if(currentData == data) {
+			removeAt(vector, index);
+		} else {
+			index += 1;
+		}
+	}
 }
 
 void clearVector(Vector *vector) {

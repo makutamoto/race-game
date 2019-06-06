@@ -16,13 +16,17 @@
 #define NOF_MAX_EVENTS 10
 
 HWND window;
-HANDLE store;
 HANDLE input;
-HANDLE screen;
+HANDLE doubleScreens[2];
+HANDLE visibleScreen, hiddenScreen;
 char *buffer;
-size_t bufferSize;
-COORD bufferSizeCoord = { 300, 300 };
+size_t bufferLength;
+COORD bufferSizeCoord = { 250, 250 };
 INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
+struct {
+	float move[2];
+	float direction[2];
+} controller;
 
 Image hero;
 Image background;
@@ -42,25 +46,39 @@ void popWindowSize() {
 	MoveWindow(window, storedSize.left, storedSize.top, storedSize.right - storedSize.left, storedSize.bottom - storedSize.top, FALSE);
 }
 
-void initialize() {
-	CONSOLE_FONT_INFOEX font;
-	DWORD mode;
-	window = GetConsoleWindow();
-	store = GetStdHandle(STD_OUTPUT_HANDLE);
-	input = GetStdHandle(STD_INPUT_HANDLE);
-	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
-	GetConsoleMode(store, &mode);
-	SetConsoleMode(screen, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-	font.cbSize = sizeof(CONSOLE_FONT_INFOEX);
+HANDLE createScreen() {
+	static CONSOLE_CURSOR_INFO info = { 1, FALSE };
+	COORD actualBufferSize;
+	CONSOLE_FONT_INFOEX font = { .cbSize = sizeof(CONSOLE_FONT_INFOEX) };
+	HANDLE screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
+	pushWindowSize();
+	SetConsoleActiveScreenBuffer(screen);
+	SetConsoleCursorInfo(screen, &info);
 	GetCurrentConsoleFontEx(screen, FALSE, &font);
 	font.dwFontSize.X = 1;
 	font.dwFontSize.Y = 1;
 	SetCurrentConsoleFontEx(screen, FALSE, &font);
-	bufferSize = bufferSizeCoord.X * bufferSizeCoord.Y;
-	buffer = (char*)malloc(bufferSize);
-	pushWindowSize();
-	SetConsoleActiveScreenBuffer(screen);
+	actualBufferSize.X = 2 * bufferSizeCoord.X;
+	actualBufferSize.Y = bufferSizeCoord.Y;
+	SetConsoleScreenBufferSize(screen, actualBufferSize);
 	popWindowSize();
+	return screen;
+}
+
+void swapScreens() {
+	static int visible = 1;
+	hiddenScreen = doubleScreens[visible];
+	visibleScreen = doubleScreens[(visible ^= 1)];
+}
+
+void initialize() {
+	window = GetConsoleWindow();
+	input = GetStdHandle(STD_INPUT_HANDLE);
+	doubleScreens[0] = createScreen();
+	doubleScreens[1] = createScreen();
+	swapScreens();
+	bufferLength = bufferSizeCoord.X * bufferSizeCoord.Y;
+	buffer = (char*)malloc(bufferLength);
 	hero = loadBitmap("assets/hero.bmp", BLACK);
 	background = loadBitmap("assets/Gochi.bmp", NULL_COLOR);
 	childImage = genCircle(32, RED);
@@ -69,32 +87,64 @@ void initialize() {
 	heroSprite.shadowScale = 0.75;
 	heroSprite.shadowOffset[1] = 10.0;
 	child.position[0] = 10.0;
-	heroSprite.angle = 3.14 / 3;
 	child.angle = 3.14 / 3;
 	addChild(&heroSprite, &child);
 }
 
 BOOL pollEvents() {
 	DWORD nofEvents;
+	GetNumberOfConsoleInputEvents(input, &nofEvents);
+	if(nofEvents == 0) return TRUE;
 	ReadConsoleInput(input, inputRecords, NOF_MAX_EVENTS, &nofEvents);
 	for(int i = 0;i < nofEvents;i += 1) {
 		switch(inputRecords[i].EventType) {
 			case KEY_EVENT:
 			KEY_EVENT_RECORD *keyEvent = &inputRecords[i].Event.KeyEvent;
 			if(keyEvent->bKeyDown) {
-				switch(keyEvent->uChar.AsciiChar) {
-					case 'q': return FALSE;
-					case 'w':
-						heroSprite.position[1] -= 2;
+				switch(keyEvent->wVirtualKeyCode) {
+					case 'Q': return FALSE;
+					case 'W':
+						controller.move[1] -= 1.0;
 						break;
-					case 's':
-						heroSprite.position[1] += 2;
+					case 'S':
+						controller.move[1] = 1.0;
 						break;
-					case 'a':
-						heroSprite.position[0] -= 2;
+					case 'A':
+						controller.move[0] = -1.0;
 						break;
-					case 'd':
-						heroSprite.position[0] += 2;
+					case 'D':
+						controller.move[0] = 1.0;
+						break;
+					case VK_UP:
+						controller.direction[1] = -1.0;
+						break;
+					case VK_DOWN:
+						controller.direction[1] = 1.0;
+						break;
+					case VK_LEFT:
+						controller.direction[0] = -1.0;
+						break;
+					case VK_RIGHT:
+						controller.direction[0] = 1.0;
+						break;
+				}
+			} else {
+				switch(keyEvent->wVirtualKeyCode) {
+					case 'W':
+					case 'S':
+						controller.move[1] = 0.0;
+						break;
+					case 'A':
+					case 'D':
+						controller.move[0] = 0.0;
+						break;
+					case VK_UP:
+					case VK_DOWN:
+						controller.direction[1] = 0.0;
+						break;
+					case VK_LEFT:
+					case VK_RIGHT:
+						controller.direction[0] = 0.0;
 						break;
 				}
 			}
@@ -106,69 +156,35 @@ BOOL pollEvents() {
 }
 
 void flush() {
-	static char colors[][10] = {
-		"\x1b[40m ", "\x1b[41m ", "\x1b[42m ", "\x1b[43m ",
-		"\x1b[44m ", "\x1b[45m ", "\x1b[46m ", "\x1b[47m ",
-		"\x1b[100m ", "\x1b[101m ", "\x1b[102m ", "\x1b[103m ",
-		"\x1b[104m ", "\x1b[105m ", "\x1b[106m ", "\x1b[107m "
-	};
-	static CONSOLE_CURSOR_INFO cursor = { 1, FALSE };
 	DWORD nofWritten;
-	size_t bufferSize = (bufferSizeCoord.X * 8 + 20) * bufferSizeCoord.Y;
-	char temp[20], temp2[10];
-	char *data = (char*)malloc(bufferSize);
-	char previousColor = 0xFF;
-	size_t dataIndex = 0;
-	data[0] = '\0';
-	unsigned int row;
-	for(row = 0;row < bufferSizeCoord.Y;row++) {
-		temp[0] = '\0';
-		strcat_s(temp, sizeof(temp), "\x1b[");
-		_itoa_s(row, temp2, sizeof(temp2), 10);
-		strcat_s(temp, sizeof(temp), temp2);
-		strcat_s(temp, sizeof(temp), ";0H");
-		strcat_s(&data[dataIndex], bufferSize, temp);
-		dataIndex += strlen(temp2) + 4;
-		unsigned int col;
-		for(col = 0;col < bufferSizeCoord.X;col++) {
-			size_t index = bufferSizeCoord.X * row + col;
-			if(buffer[index] == previousColor) {
-				strcat_s(&data[dataIndex], bufferSize, " ");
-				dataIndex += 1;
-			} else {
-				strcat_s(&data[dataIndex], bufferSize, colors[buffer[index]]);
-				dataIndex += strlen(colors[buffer[index]]);
-			}
-			previousColor = buffer[index];
-		}
+	static COORD cursor = { 0, 0 };
+	WORD *data = (WORD*)malloc(2 * bufferLength * sizeof(WORD));
+	size_t index;
+	for(index = 0;index < bufferLength;index++) {
+		WORD attribute = BACKGROUND_BLUE - 1 + (((buffer[index] & 8) | ((buffer[index] & 1) << 2) | (buffer[index] & 2) | ((buffer[index] & 4) >> 2)) << 4);
+		data[2 * index] = attribute;
+		data[2 * index + 1] = attribute;
 	}
-	WriteConsole(screen, data, strlen(data), &nofWritten, NULL);
-	SetConsoleCursorInfo(screen, &cursor);
+	WriteConsoleOutputAttribute(hiddenScreen, data, bufferLength, cursor, &nofWritten);
 	free(data);
-}
-
-void draw() {
-	memset(buffer, 0, bufferSize);
-	clearTransformation();
-	// drawRect(0, 0, bufferSizeCoord.X, bufferSizeCoord.Y, DARK_BLUE);
-	// Scene
-	drawSprite(heroSprite);
-	flush();
+	swapScreens();
 }
 
 void loop() {
-	while(TRUE) {
-		if(!pollEvents()) return;
-		draw();
-	}
+	float move[2];
+	addVec2(heroSprite.position, mulVec2ByScalar(controller.move, 0.5, move), heroSprite.position);
+	heroSprite.angle = angleVec2(controller.direction) + PI / 2.0;
+}
+
+void draw() {
+	memset(buffer, 0, bufferLength);
+	clearTransformation();
+	drawSprite(heroSprite);
+	flush();
+	// Scene System.
 }
 
 void deinitialize() {
-	pushWindowSize();
-	SetConsoleActiveScreenBuffer(store);
-	popWindowSize();
-	CloseHandle(screen);
-	CloseHandle(store);
 	freeImage(hero);
 	freeImage(background);
 	freeImage(childImage);
@@ -177,7 +193,11 @@ void deinitialize() {
 
 int main() {
 	initialize();
-	loop();
+	while(TRUE) {
+		if(!pollEvents()) break;
+		loop();
+		draw();
+	}
 	deinitialize();
 	return 0;
 }
