@@ -50,7 +50,7 @@ void* previousData(Vector *vector) {
 	return vector->currentItem->data;
 }
 
-BOOL push(Vector *vector, void *data) {
+int push(Vector *vector, void *data) {
 	VectorItem *newItem = (VectorItem*)malloc(sizeof(VectorItem));
 	if(newItem == NULL) return FALSE;
 	newItem->previousItem = vector->lastItem;
@@ -63,9 +63,9 @@ BOOL push(Vector *vector, void *data) {
 	return TRUE;
 }
 
-void pop(Vector *vector) {
+void* pop(Vector *vector) {
 	VectorItem *previousItem = vector->lastItem->previousItem;
-	free(vector->lastItem->data);
+	void *data = vector->lastItem->data;
 	free(vector->lastItem);
 	if(previousItem == NULL) {
 		vector->firstItem = NULL;
@@ -77,6 +77,7 @@ void pop(Vector *vector) {
 		vector->lastItem = previousItem;
 	}
 	vector->length -= 1;
+	return data;
 }
 
 VectorItem* ItemAt(Vector vector, size_t index) {
@@ -96,7 +97,7 @@ void* dataAt(Vector vector, size_t index) {
 	return item->data;
 }
 
-BOOL insertAt(Vector *vector, size_t index, void *data) {
+int insertAt(Vector *vector, size_t index, void *data) {
 	if(vector->firstItem  == NULL) {
 		if(index != 0) return FALSE;
 		VectorItem *newItem = (VectorItem*)malloc(sizeof(VectorItem));
@@ -124,8 +125,9 @@ BOOL insertAt(Vector *vector, size_t index, void *data) {
 	return TRUE;
 }
 
-void drainAt(Vector *vector, size_t index, void **data) {
+void* removeAt(Vector *vector, size_t index) {
 	VectorItem *item = ItemAt(*vector, index);
+	void *data = item->data;
 	if(vector->currentItem == item) vector->currentItem = item->nextItem;
 	if(item->previousItem == NULL) {
 		vector->firstItem = item->nextItem;
@@ -137,15 +139,9 @@ void drainAt(Vector *vector, size_t index, void **data) {
 	} else {
 		item->nextItem->previousItem = item->previousItem;
 	}
-	*data = item->data;
 	free(item);
 	vector->length -= 1;
-}
-
-void removeAt(Vector *vector, size_t index) {
-	void *data;
-	drainAt(vector, index, &data);
-	free(data);
+	return data;
 }
 
 void removeByData(Vector *vector, void *data) {
@@ -163,4 +159,8 @@ void removeByData(Vector *vector, void *data) {
 
 void clearVector(Vector *vector) {
 	while(vector->length > 0) pop(vector);
+}
+
+void freeVector(Vector *vector) {
+	while(vector->length > 0) free(pop(vector));
 }

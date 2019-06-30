@@ -15,10 +15,11 @@ typedef struct _Sprite {
 	Image image;
 	struct _Sprite *parent;
 	struct _Sprite *children[10];
+	int (*behaviour)(struct _Sprite*);
 }	Sprite;
 
 Sprite initSprite(const char *id, Image image);
 int addChild(Sprite *parent, Sprite *child);
-void drawSprite(Sprite sprite);
+void drawSprite(Sprite *sprite);
 
 #endif

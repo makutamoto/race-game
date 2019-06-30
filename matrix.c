@@ -39,8 +39,13 @@ float* mulVec2ByScalar(const float vector[2], float scalar, float out[2]) {
 
 float* normalize2(const float vector[2], float out[2]) {
 	float length = length2(vector);
-	out[0] = vector[0] / length;
-	out[1] = vector[1] / length;
+	if(length == 0.0) {
+		out[0] = 0.0;
+		out[1] = 0.0;
+	} else {
+		out[0] = vector[0] / length;
+		out[1] = vector[1] / length;
+	}
 	return out;
 }
 

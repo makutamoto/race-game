@@ -11,6 +11,7 @@
 
 extern char *buffer;
 extern COORD bufferSizeCoord;
+extern size_t bufferLength;
 
 float transformation[3][3];
 
@@ -71,6 +72,10 @@ void setPixelColor(int x, int y, char color) {
 	}
 }
 
+void setBuffer(char color) {
+	for(size_t i = 0;i < bufferLength;i++) buffer[i] = color;
+}
+
 void fillBuffer(Image image, int shadow) {
 	float halfWidth = image.width / 2.0;
 	float halfHeight = image.height / 2.0;
@@ -82,15 +87,15 @@ void fillBuffer(Image image, int shadow) {
 	float transformedLeftBottom[3];
 	float transformedRightTop[3];
 	float transformedRightBottom[3];
-	int maxCoord[2], minCoord[2];
+	unsigned int maxCoord[2], minCoord[2];
 	float axisX[2], axisY[2];
 	float axisXLen, axisYLen;
 	mulMat3Vec3(transformation, leftTop, transformedLeftTop);
 	mulMat3Vec3(transformation, leftBottom, transformedLeftBottom);
 	mulMat3Vec3(transformation, rightTop, transformedRightTop);
 	mulMat3Vec3(transformation, rightBottom, transformedRightBottom);
-	maxCoord[0] = min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), bufferSizeCoord.X);
-	maxCoord[1] = min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), bufferSizeCoord.Y);
+	maxCoord[0] = max(min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), bufferSizeCoord.X), 0);
+	maxCoord[1] = max(min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), bufferSizeCoord.Y), 0);
 	minCoord[0] = max(min(min(transformedLeftTop[0], transformedLeftBottom[0]), min(transformedRightTop[0], transformedRightBottom[0])), 0);
 	minCoord[1] = max(min(min(transformedLeftTop[1], transformedLeftBottom[1]), min(transformedRightTop[1], transformedRightBottom[1])), 0);
 	axisX[0] = transformedRightTop[0] - transformedLeftTop[0];
@@ -99,16 +104,17 @@ void fillBuffer(Image image, int shadow) {
 	axisY[1] = transformedLeftBottom[1] - transformedLeftTop[1];
 	axisXLen = length2(axisX);
 	axisYLen = length2(axisY);
+
 	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
 		unsigned int x;
 		for(x = minCoord[0];x < maxCoord[0];x++) {
-			float vector[2] = { x - transformedLeftTop[0], y - transformedLeftTop[1] };
+			float vector[2] = { (int)x - transformedLeftTop[0], (int)y - transformedLeftTop[1] };
 			float dataCoords[2] = { dot2(vector, axisX) / (axisXLen * axisXLen), dot2(vector, axisY) / (axisYLen * axisYLen) };
 			if(dataCoords[0] >= 0.0 && dataCoords[0] < 1.0 && dataCoords[1] >= 0.0 && dataCoords[1] < 1.0) {
 				char color = image.data[image.width * min((unsigned int)round(image.height * dataCoords[1]), image.height - 1) + min((unsigned int)round(image.width * dataCoords[0]), image.width - 1)];
 				if(color != image.transparent) {
-					size_t index = bufferSizeCoord.X * y + x;
+					size_t index = bufferSizeCoord.X * (int)y + (int)x;
 					if(shadow) {
 						if((buffer[index] >> 3) & 1) {
 							color = buffer[index] ^ 0x0E;

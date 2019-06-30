@@ -15,6 +15,7 @@ void translateTransformation(float dx, float dy);
 void scaleTransformation(float sx, float sy);
 void rotateTransformation(float rotation);
 
+void setBuffer(char color);
 void fillBuffer(Image image, int shadow);
 
 Image loadBitmap(char *fileName, char transparent);
