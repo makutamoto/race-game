@@ -6,10 +6,10 @@
 
 typedef struct {
   Vector children;
-  char background;
+  unsigned char background;
 } Scene;
 
-Scene initScene();
+Scene initScene(void);
 void drawScene(Scene *scene);
 void discardScene(Scene *scene);
 

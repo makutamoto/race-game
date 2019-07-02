@@ -1,7 +1,7 @@
 #include<stdio.h>
 #include<math.h>
 #include<stdint.h>
-#include<windows.h>
+#include<Windows.h>
 #include<time.h>
 
 #include "./include/matrix.h"
@@ -16,42 +16,43 @@
 
 #define NOF_MAX_EVENTS 10
 
-HWND window;
-HANDLE input;
-HANDLE doubleScreens[2];
-HANDLE visibleScreen, hiddenScreen;
-char *buffer;
+static HWND window;
+static HANDLE input;
+static HANDLE doubleScreens[2];
+static HANDLE visibleScreen, hiddenScreen;
+unsigned char *buffer;
 size_t bufferLength;
 COORD bufferSizeCoord = { 125, 250 };
-INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
-struct {
+static INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
+static struct {
 	float move[2];
 	float direction[2];
 	BOOL action;
 } controller;
 
-Image lifeBar;
-Image hero;
-Image heroBullet;
-Image enemy1;
+static Image lifeBar;
+static Image hero;
+static Image heroBullet;
+static Image enemy1;
 
-Sprite lifeBarSprite;
-Scene scene;
-Sprite heroSprite;
-Sprite enemy1Sprite;
+static Sprite lifeBarSprite;
+static Scene scene;
+static Sprite heroSprite;
+static Sprite enemy1Sprite;
 
-RECT storedSize;
-void pushWindowSize() {
+static RECT storedSize;
+static void pushWindowSize(void) {
 	WINDOWINFO info;
 	info.cbSize = sizeof(WINDOWINFO);
 	GetWindowInfo(window, &info);
 	storedSize = info.rcWindow;
 }
-void popWindowSize() {
+
+static void popWindowSize(void) {
 	MoveWindow(window, storedSize.left, storedSize.top, storedSize.right - storedSize.left, storedSize.bottom - storedSize.top, FALSE);
 }
 
-HANDLE createScreen() {
+static HANDLE createScreen(void) {
 	static CONSOLE_CURSOR_INFO info = { 1, FALSE };
 	COORD actualBufferSize;
 	CONSOLE_FONT_INFOEX font = { .cbSize = sizeof(CONSOLE_FONT_INFOEX) };
@@ -70,46 +71,46 @@ HANDLE createScreen() {
 	return screen;
 }
 
-void swapScreens() {
+static void swapScreens(void) {
 	static int visible = 1;
 	hiddenScreen = doubleScreens[visible];
 	visibleScreen = doubleScreens[(visible ^= 1)];
 	SetConsoleActiveScreenBuffer(visibleScreen);
 }
 
-int enemy1Behaviour(Sprite *sprite) {
+static int enemy1Behaviour(Sprite *sprite) {
 	float direction[2];
   // if(sprite->collisionTarget != NULL && !strcmp(sprite->collisionTarget->name, "bullet")) {
   //   removeByData(&scene.children, sprite->collisionTarget);
   //   sprite->collisionTarget = NULL;
   // }
   direction2(heroSprite.position, sprite->position, direction);
-  mulVec2ByScalar(direction,  min(3.0, distance2(heroSprite.position, sprite->position) - 50.0), direction);
+  mulVec2ByScalar(direction,  min(3.0F, distance2(heroSprite.position, sprite->position) - 50.0F), direction);
 	addVec2(sprite->position, direction, sprite->position);
 	return TRUE;
 }
 
-int bulletBehaviour(Sprite *sprite) {
-	if(distance2(heroSprite.position, sprite->position) > 100) {
+static int bulletBehaviour(Sprite *sprite) {
+	if(distance2(heroSprite.position, sprite->position) > 300) {
 		removeByData(&scene.children, sprite);
 		free(sprite);
 		return FALSE;
 	}
-	sprite->position[0] += 1.0 * cos(sprite->angle - PI / 2.0);
-	sprite->position[1] += 1.0 * sin(sprite->angle - PI / 2.0);
+	sprite->position[0] += cosf(sprite->angle[2] - PI / 2.0F);
+	sprite->position[1] += sinf(sprite->angle[2] - PI / 2.0F);
 	return TRUE;
 }
 
-int heroBehaviour(Sprite *sprite) {
+static int heroBehaviour(Sprite *sprite) {
 	float move[2];
-	addVec2(sprite->position, mulVec2ByScalar(controller.move, 0.75, move), sprite->position);
+	addVec2(sprite->position, mulVec2ByScalar(controller.move, 0.75F, move), sprite->position);
 	sprite->position[0] = max(min(sprite->position[0], bufferSizeCoord.X), 0.0);
-	sprite->position[1] = max(min(sprite->position[1], bufferSizeCoord.Y / 2.0), 0.0);
-	sprite->angle = angleVec2(controller.direction) + PI / 2.0;
+	sprite->position[1] = max(min(sprite->position[1], bufferSizeCoord.Y / 2.0F), 0.0);
+	sprite->angle[2] = angleVec2(controller.direction) + PI / 2.0F;
 	if(controller.action) {
 		Sprite *bullet = malloc(sizeof(Sprite));
 		*bullet = initSprite("heroBullet", heroBullet);
-		bullet->angle = sprite->angle;
+		bullet->angle[2] = sprite->angle[2];
 		bullet->position[0] = sprite->position[0];
 		bullet->position[1] = sprite->position[1];
 		bullet->behaviour = bulletBehaviour;
@@ -119,14 +120,14 @@ int heroBehaviour(Sprite *sprite) {
 	return TRUE;
 }
 
-void initialize() {
+static void initialize(void) {
 	window = GetConsoleWindow();
 	input = GetStdHandle(STD_INPUT_HANDLE);
 	doubleScreens[0] = createScreen();
 	doubleScreens[1] = createScreen();
 	swapScreens();
-	bufferLength = bufferSizeCoord.X * bufferSizeCoord.Y;
-	buffer = (char*)malloc(bufferLength);
+	bufferLength = (size_t)(bufferSizeCoord.X * bufferSizeCoord.Y);
+	buffer = (unsigned char*)malloc(bufferLength);
 	lifeBar = genRect(50, 10, RED);
 	hero = loadBitmap("assets/hero.bmp", BLACK);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
@@ -152,12 +153,12 @@ void initialize() {
 	push(&scene.children, &enemy1Sprite);
 }
 
-BOOL pollEvents() {
+static BOOL pollEvents(void) {
 	DWORD nofEvents;
 	GetNumberOfConsoleInputEvents(input, &nofEvents);
 	if(nofEvents == 0) return TRUE;
 	ReadConsoleInput(input, inputRecords, NOF_MAX_EVENTS, &nofEvents);
-	for(int i = 0;i < nofEvents;i += 1) {
+	for(int i = 0;i < (int)nofEvents;i += 1) {
 		switch(inputRecords[i].EventType) {
 			case KEY_EVENT:
 			KEY_EVENT_RECORD *keyEvent = &inputRecords[i].Event.KeyEvent;
@@ -165,28 +166,28 @@ BOOL pollEvents() {
 				switch(keyEvent->wVirtualKeyCode) {
 					case 'Q': return FALSE;
 					case 'W':
-						controller.move[1] -= 1.0;
+						controller.move[1] -= 1.0F;
 						break;
 					case 'S':
-						controller.move[1] = 1.0;
+						controller.move[1] = 1.0F;
 						break;
 					case 'A':
-						controller.move[0] = -1.0;
+						controller.move[0] = -1.0F;
 						break;
 					case 'D':
-						controller.move[0] = 1.0;
+						controller.move[0] = 1.0F;
 						break;
 					case VK_UP:
-						controller.direction[1] = -1.0;
+						controller.direction[1] = -1.0F;
 						break;
 					case VK_DOWN:
-						controller.direction[1] = 1.0;
+						controller.direction[1] = 1.0F;
 						break;
 					case VK_LEFT:
-						controller.direction[0] = -1.0;
+						controller.direction[0] = -1.0F;
 						break;
 					case VK_RIGHT:
-						controller.direction[0] = 1.0;
+						controller.direction[0] = 1.0F;
 						break;
 					case VK_SPACE:
 						controller.action = TRUE;
@@ -196,19 +197,19 @@ BOOL pollEvents() {
 				switch(keyEvent->wVirtualKeyCode) {
 					case 'W':
 					case 'S':
-						controller.move[1] = 0.0;
+						controller.move[1] = 0.0F;
 						break;
 					case 'A':
 					case 'D':
-						controller.move[0] = 0.0;
+						controller.move[0] = 0.0F;
 						break;
 					case VK_UP:
 					case VK_DOWN:
-						controller.direction[1] = 0.0;
+						controller.direction[1] = 0.0F;
 						break;
 					case VK_LEFT:
 					case VK_RIGHT:
-						controller.direction[0] = 0.0;
+						controller.direction[0] = 0.0F;
 						break;
 					case VK_SPACE:
 						controller.action = FALSE;
@@ -222,22 +223,22 @@ BOOL pollEvents() {
 	return TRUE;
 }
 
-void flush() {
+static void flush(void) {
 	DWORD nofWritten;
 	static COORD cursor = { 0, 0 };
 	WORD *data = (WORD*)malloc(2 * bufferLength * sizeof(WORD));
 	size_t index;
 	for(index = 0;index < bufferLength;index++) {
-		WORD attribute = BACKGROUND_BLUE - 1 + (((buffer[index] & 8) | ((buffer[index] & 1) << 2) | (buffer[index] & 2) | ((buffer[index] & 4) >> 2)) << 4);
+		WORD attribute = (WORD)(BACKGROUND_BLUE - 1 + (((buffer[index] & 8) | ((buffer[index] & 1) << 2) | (buffer[index] & 2) | ((buffer[index] & 4) >> 2)) << 4));
 		data[2 * index] = attribute;
 		data[2 * index + 1] = attribute;
 	}
-	WriteConsoleOutputAttribute(hiddenScreen, data, bufferLength, cursor, &nofWritten);
+	WriteConsoleOutputAttribute(hiddenScreen, data, (DWORD)bufferLength, cursor, &nofWritten);
 	free(data);
 	swapScreens();
 }
 
-void deinitialize() {
+static void deinitialize(void) {
 	freeImage(lifeBar);
 	freeImage(hero);
 	freeImage(heroBullet);
@@ -245,7 +246,7 @@ void deinitialize() {
 	free(buffer);
 }
 
-int main() {
+int main(void) {
 	initialize();
 	while(TRUE) {
 		if(!pollEvents()) break;

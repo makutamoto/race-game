@@ -1,8 +1,8 @@
-#include<windows.h>
+#include<Windows.h>
 
 #include "./include/vector.h"
 
-Vector initVector() {
+Vector initVector(void) {
 	Vector vector = {
 		.length = 0,
 		.firstItem = NULL,

@@ -14,7 +14,7 @@ typedef struct _VectorItem {
 	void *data;
 } VectorItem;
 
-Vector initVector();
+Vector initVector(void);
 void clearVector(Vector *vector);
 void freeVector(Vector *vector);
 

@@ -1,7 +1,7 @@
 #include<stdio.h>
 #include<stdint.h>
 #include<math.h>
-#include<windows.h>
+#include<Windows.h>
 
 #include "./include/matrix.h"
 #include "./include/graphics.h"
@@ -9,95 +9,73 @@
 #include "./include/colors.h"
 #include "./include/vector.h"
 
-extern char *buffer;
-extern COORD bufferSizeCoord;
-extern size_t bufferLength;
+static float transformation[4][4];
 
-float transformation[3][3];
-
-Vector matrixStore2;
-float matrixStore[64][3][3];
-unsigned int currentStore = 0;
-void pushTransformation() {
-	matrixStore[currentStore][0][0] = transformation[0][0];
-	matrixStore[currentStore][0][1] = transformation[0][1];
-	matrixStore[currentStore][0][2] = transformation[0][2];
-	matrixStore[currentStore][1][0] = transformation[1][0];
-	matrixStore[currentStore][1][1] = transformation[1][1];
-	matrixStore[currentStore][1][2] = transformation[1][2];
-	matrixStore[currentStore][2][0] = transformation[2][0];
-	matrixStore[currentStore][2][1] = transformation[2][1];
-	matrixStore[currentStore][2][2] = transformation[2][2];
+static Vector matrixStore;
+static unsigned int currentStore = 0;
+void pushTransformation(void) {
+	float *store = malloc(16 * sizeof(float));
+	copyMat4(transformation, (float(*)[4])store);
+	push(&matrixStore, store);
 	currentStore += 1;
 }
 
-void popTransformation() {
+void popTransformation(void) {
+	float *store;
 	currentStore -= 1;
-	transformation[0][0] = matrixStore[currentStore][0][0];
-	transformation[0][1] = matrixStore[currentStore][0][1];
-	transformation[0][2] = matrixStore[currentStore][0][2];
-	transformation[1][0] = matrixStore[currentStore][1][0];
-	transformation[1][1] = matrixStore[currentStore][1][1];
-	transformation[1][2] = matrixStore[currentStore][1][2];
-	transformation[2][0] = matrixStore[currentStore][2][0];
-	transformation[2][1] = matrixStore[currentStore][2][1];
-	transformation[2][2] = matrixStore[currentStore][2][2];
+	store = (float*)pop(&matrixStore);
+	copyMat4((float(*)[4])store, transformation);
+	free(store);
 }
 
-void clearTransformation() {
-	genIdentityMat3(transformation);
+void clearTransformation(void) {
+	genIdentityMat4(transformation);
 }
 
-void translateTransformation(float dx, float dy) {
-	float temp1[3][3], temp2[3][3];
+void translateTransformation(float dx, float dy, float dz) {
+	float temp1[4][4], temp2[4][4];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat3(temp2, genTranslationMat3(dx, dy, temp1), transformation);
+	mulMat4(temp2, genTranslationMat4(dx, dy, dz, temp1), transformation);
 }
 
-void scaleTransformation(float sx, float sy) {
-	float temp1[3][3], temp2[3][3];
+void scaleTransformation(float sx, float sy, float sz) {
+	float temp1[4][4], temp2[4][4];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat3(temp2, genScaleMat3(sx, sy, temp1), transformation);
+	mulMat4(temp2, genScaleMat4(sx, sy, sz, temp1), transformation);
 }
 
-void rotateTransformation(float rotation) {
-	float temp1[3][3], temp2[3][3];
+void rotateTransformation(float rx, float ry, float rz) {
+	float temp1[4][4], temp2[4][4];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
-	mulMat3(temp2, genRotationMat3(rotation, temp1), transformation);
+	mulMat4(temp2, genRotationMat4(rx, ry, rz, temp1), transformation);
 }
 
-void setPixelColor(int x, int y, char color) {
-	if(x >= 0 && x < bufferSizeCoord.X && y >= 0 && y < bufferSizeCoord.Y) {
-		buffer[bufferSizeCoord.X * y + x] = color;
-	}
-}
-
-void setBuffer(char color) {
+void setBuffer(unsigned char color) {
 	for(size_t i = 0;i < bufferLength;i++) buffer[i] = color;
 }
 
 void fillBuffer(Image image, int shadow) {
-	float halfWidth = image.width / 2.0;
-	float halfHeight = image.height / 2.0;
-	float leftTop[3] = { -halfWidth, -halfHeight, 1.0 };
-	float leftBottom[3] = { -halfWidth, halfHeight, 1.0 };
-	float rightTop[3] = { halfWidth, -halfHeight, 1.0 };
-	float rightBottom[3] = { halfWidth, halfHeight, 1.0 };
-	float transformedLeftTop[3];
-	float transformedLeftBottom[3];
-	float transformedRightTop[3];
-	float transformedRightBottom[3];
+	float halfWidth = image.width / 2.0F;
+	float halfHeight = image.height / 2.0F;
+	float leftTop[4] = { -halfWidth, -halfHeight, 0.0, 1.0 };
+	float leftBottom[4] = { -halfWidth, halfHeight, 0.0, 1.0 };
+	float rightTop[4] = { halfWidth, -halfHeight, 0.0, 1.0 };
+	float rightBottom[4] = { halfWidth, halfHeight, 0.0, 1.0 };
+	float transformedLeftTop[4];
+	float transformedLeftBottom[4];
+	float transformedRightTop[4];
+	float transformedRightBottom[4];
 	unsigned int maxCoord[2], minCoord[2];
 	float axisX[2], axisY[2];
 	float axisXLen, axisYLen;
-	mulMat3Vec3(transformation, leftTop, transformedLeftTop);
-	mulMat3Vec3(transformation, leftBottom, transformedLeftBottom);
-	mulMat3Vec3(transformation, rightTop, transformedRightTop);
-	mulMat3Vec3(transformation, rightBottom, transformedRightBottom);
-	maxCoord[0] = max(min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), bufferSizeCoord.X), 0);
-	maxCoord[1] = max(min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), bufferSizeCoord.Y), 0);
-	minCoord[0] = max(min(min(transformedLeftTop[0], transformedLeftBottom[0]), min(transformedRightTop[0], transformedRightBottom[0])), 0);
-	minCoord[1] = max(min(min(transformedLeftTop[1], transformedLeftBottom[1]), min(transformedRightTop[1], transformedRightBottom[1])), 0);
+	mulMat4Vec4(transformation, leftTop, transformedLeftTop);
+	mulMat4Vec4(transformation, leftBottom, transformedLeftBottom);
+	mulMat4Vec4(transformation, rightTop, transformedRightTop);
+	mulMat4Vec4(transformation, rightBottom, transformedRightBottom);
+	maxCoord[0] = (unsigned int)max(min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), bufferSizeCoord.X), 0);
+	maxCoord[1] = (unsigned int)max(min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), bufferSizeCoord.Y), 0);
+	minCoord[0] = (unsigned int)max(min(min(transformedLeftTop[0], transformedLeftBottom[0]), min(transformedRightTop[0], transformedRightBottom[0])), 0);
+	minCoord[1] = (unsigned int)max(min(min(transformedLeftTop[1], transformedLeftBottom[1]), min(transformedRightTop[1], transformedRightBottom[1])), 0);
 	axisX[0] = transformedRightTop[0] - transformedLeftTop[0];
 	axisX[1] = transformedRightTop[1] - transformedLeftTop[1];
 	axisY[0] = transformedLeftBottom[0] - transformedLeftTop[0];
@@ -111,10 +89,10 @@ void fillBuffer(Image image, int shadow) {
 		for(x = minCoord[0];x < maxCoord[0];x++) {
 			float vector[2] = { (int)x - transformedLeftTop[0], (int)y - transformedLeftTop[1] };
 			float dataCoords[2] = { dot2(vector, axisX) / (axisXLen * axisXLen), dot2(vector, axisY) / (axisYLen * axisYLen) };
-			if(dataCoords[0] >= 0.0 && dataCoords[0] < 1.0 && dataCoords[1] >= 0.0 && dataCoords[1] < 1.0) {
-				char color = image.data[image.width * min((unsigned int)round(image.height * dataCoords[1]), image.height - 1) + min((unsigned int)round(image.width * dataCoords[0]), image.width - 1)];
+			if(dataCoords[0] >= 0.0F && dataCoords[0] < 1.0F && dataCoords[1] >= 0.0F && dataCoords[1] < 1.0F) {
+				unsigned char color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
 				if(color != image.transparent) {
-					size_t index = bufferSizeCoord.X * (int)y + (int)x;
+					size_t index = (size_t)bufferSizeCoord.X * y + x;
 					if(shadow) {
 						if((buffer[index] >> 3) & 1) {
 							color = buffer[index] ^ 0x0E;
@@ -129,7 +107,7 @@ void fillBuffer(Image image, int shadow) {
 	}
 }
 
-Image loadBitmap(char *fileName, char transparent) {
+Image loadBitmap(char *fileName, unsigned char transparent) {
 	Image image = { 0, 0, NULL_COLOR, NULL };
 	FILE *file;
 	BitmapHeader header;
@@ -163,7 +141,7 @@ Image loadBitmap(char *fileName, char transparent) {
 		fprintf(stderr, "Compressions are not supported.\n");
 		return image;
 	}
-	if(fseek(file, header.offset, SEEK_SET)) {
+	if(fseek(file, (long)header.offset, SEEK_SET)) {
 		fprintf(stderr, "Image data does not exist.\n");
 		return image;
 	}
@@ -172,15 +150,15 @@ Image loadBitmap(char *fileName, char transparent) {
 		fprintf(stderr, "Image data is corrupted.\n");
 		return image;
 	}
-	image.width = infoHeader.width;
-	image.height = infoHeader.height;
+	image.width = (unsigned int)infoHeader.width;
+	image.height = (unsigned int)infoHeader.height;
 	image.transparent = transparent;
-	image.data = (char*)malloc(image.width * image.height);
-	int32_t y;
+	image.data = (unsigned char*)malloc(image.width * image.height);
+	unsigned int y;
 	for(y = 0;y < image.height;y++) {
-		int32_t x;
+		unsigned int x;
 		for(x = 0;x < image.width;x++) {
-			size_t index = y * (int32_t)ceil(image.width / 8.0) + x / 8;
+			size_t index = y * (unsigned int)(ceilf(image.width / 8.0F)) + x / 8;
 			uint8_t location = x % 8;
 			uint8_t highLow = location % 2;
 			uint8_t color;
@@ -196,9 +174,9 @@ Image loadBitmap(char *fileName, char transparent) {
 	return image;
 }
 
-Image genRect(unsigned int width, unsigned int height, char color) {
+Image genRect(unsigned int width, unsigned int height, unsigned char color) {
 	Image image;
-	image.data = (char*)malloc(width * height);
+	image.data = (unsigned char*)malloc(width * height);
 	if(image.data == NULL) {
 		image.width = 0;
 		image.height = 0;
@@ -217,9 +195,9 @@ Image genRect(unsigned int width, unsigned int height, char color) {
 	return image;
 }
 
-Image genCircle(unsigned int radius, char color) {
+Image genCircle(unsigned int radius, unsigned char color) {
 	Image image;
-	int edgeWidth = 2 * radius;
+	unsigned int edgeWidth = 2 * radius;
 	image.data = malloc(edgeWidth * edgeWidth);
 	if(image.data == NULL) {
 		image.width = 0;
@@ -231,14 +209,14 @@ Image genCircle(unsigned int radius, char color) {
 	image.width = edgeWidth;
 	image.height = edgeWidth;
 	image.transparent = color ^ 0x0F;
-	int y;
+	unsigned int y;
 	for(y = 0;y < edgeWidth;y++) {
-		int x;
+		unsigned int x;
 		for(x = 0;x < edgeWidth;x++) {
-			int cx = x - radius;
-			int cy = y - radius;
+			int cx = (int)x - (int)radius;
+			int cy = (int)y - (int)radius;
 			size_t index = edgeWidth * y + x;
-			if(radius * radius >= cx * cx + cy * cy) {
+			if(radius * radius >= (unsigned int)(cx * cx + cy * cy)) {
 				image.data[index] = color;
 			} else {
 				image.data[index] = image.transparent;

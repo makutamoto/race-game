@@ -1,2 +1,2 @@
 @echo off
-clang-cl *.c -o game.exe && game.exe
+clang-cl -Wall *.c -o game.exe && game.exe

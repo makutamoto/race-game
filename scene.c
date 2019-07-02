@@ -3,7 +3,7 @@
 #include "./include/vector.h"
 #include "./include/matrix.h"
 
-Scene initScene() {
+Scene initScene(void) {
   Scene scene = {
     .children = initVector(),
     .background = 0,
@@ -16,7 +16,7 @@ void drawScene(Scene *scene) {
   setBuffer(scene->background);
   resetIteration(&scene->children);
   while((sprite = (Sprite*)previousData(&scene->children))) {
-    Sprite *collisionTarget;
+    // Sprite *collisionTarget;
     // VectorItem *item = scene->children.currentItem;
     // while((collisionTarget = (Sprite*)previousData(&scene->children))) {
     //   int distance = distance2(sprite->position, collisionTarget->position);

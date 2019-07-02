@@ -1,26 +1,32 @@
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
+#include<Windows.h>
+
 typedef struct {
 	unsigned int width;
 	unsigned int height;
-	char transparent;
-	char *data;
+	unsigned char transparent;
+	unsigned char *data;
 } Image;
 
-void pushTransformation();
-void popTransformation();
-void clearTransformation();
-void translateTransformation(float dx, float dy);
-void scaleTransformation(float sx, float sy);
-void rotateTransformation(float rotation);
+extern unsigned char *buffer;
+extern size_t bufferLength;
+extern COORD bufferSizeCoord;
 
-void setBuffer(char color);
+void pushTransformation(void);
+void popTransformation(void);
+void clearTransformation(void);
+void translateTransformation(float dx, float dy, float dz);
+void scaleTransformation(float sx, float sy, float sz);
+void rotateTransformation(float rx, float ry, float rz);
+
+void setBuffer(unsigned char color);
 void fillBuffer(Image image, int shadow);
 
-Image loadBitmap(char *fileName, char transparent);
-Image genRect(unsigned int width, unsigned int height, char color);
-Image genCircle(unsigned int radius, char color);
+Image loadBitmap(char *fileName, unsigned char transparent);
+Image genRect(unsigned int width, unsigned int height, unsigned char color);
+Image genCircle(unsigned int rad, unsigned char color);
 void freeImage(Image image);
 
 #endif

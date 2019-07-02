@@ -5,11 +5,11 @@
 
 typedef struct _Sprite {
 	char id[10];
-	float velocity[2];
+	float velocity[3];
 	float angVelocity;
-	float position[2];
-	float angle;
-	float scale[2];
+	float position[3];
+	float angle[3];
+	float scale[3];
 	float shadowScale;
 	float shadowOffset[2];
 	Image image;
