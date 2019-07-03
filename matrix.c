@@ -1,3 +1,4 @@
+#include<stdio.h>
 #include<math.h>
 
 #include "./include/matrix.h"
@@ -7,7 +8,7 @@ float (*copyMat4(float src[4][4], float dest[4][4]))[4] {
 	for(row = 0;row < 4;row++) {
 		for(col = 0;col < 4;col++) dest[row][col] = src[row][col];
 	}
-	return dest;
+	return dest; // Use memcpy;
 }
 
 float dot2(const float a[2], const float b[2]) {
@@ -22,8 +23,19 @@ float dot4(const float a[4], const float b[4]) {
 	return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
 }
 
+float* cross(float a[3], float b[3], float out[3]) {
+	out[0] = a[1] * b[2] - a[2] * b[1];
+	out[1] = a[2] * b[0] - a[0] * b[2];
+	out[2] = a[0] * b[1] - a[1] * b[0];
+	return out;
+}
+
 float length2(const float vector[2]) {
 	return sqrtf(vector[0] * vector[0] + vector[1] * vector[1]);
+}
+
+float length3(const float vector[3]) {
+	return sqrtf(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
 }
 
 float distance2(const float a[2], const float b[2]) {
@@ -37,9 +49,23 @@ float* addVec2(const float a[2], const float b[2], float out[2]) {
 	return out;
 }
 
+float* addVec3(const float a[3], const float b[3], float out[3]) {
+	out[0] = a[0] + b[0];
+	out[1] = a[1] + b[1];
+	out[2] = a[2] + b[2];
+	return out;
+}
+
 float* subVec2(const float a[2], const float b[2], float out[2]) {
 	out[0] = a[0] - b[0];
 	out[1] = a[1] - b[1];
+	return out;
+}
+
+float* subVec3(const float a[3], const float b[3], float out[3]) {
+	out[0] = a[0] - b[0];
+	out[1] = a[1] - b[1];
+	out[2] = a[2] - b[2];
 	return out;
 }
 
@@ -57,6 +83,20 @@ float* normalize2(const float vector[2], float out[2]) {
 	} else {
 		out[0] = vector[0] / length;
 		out[1] = vector[1] / length;
+	}
+	return out;
+}
+
+float* normalize3(const float vector[3], float out[3]) {
+	float length = length3(vector);
+	if(length == 0.0F) {
+		out[0] = 0.0F;
+		out[1] = 0.0F;
+		out[2] = 0.0F;
+	} else {
+		out[0] = vector[0] / length;
+		out[1] = vector[1] / length;
+		out[2] = vector[2] / length;
 	}
 	return out;
 }
@@ -336,4 +376,74 @@ float (*genRotationMat4(float rx, float ry, float rz, float mat[4][4]))[4] {
 	genRotationYMat4(ry, yMat);
 	genRotationZMat4(rz, zMat);
 	return mulMat4(mulMat4(zMat, yMat, temp), xMat, mat);
+}
+
+float (*genLookAtMat4(float position[3], float target[3], float worldUp[3], float mat[4][4]))[4] {
+	float direction[3];
+	float right[3];
+	float up[3];
+	float look[4][4] = { { 0.0F } };
+	float move[4][4] = { { 0.0F } };
+	normalize3(subVec3(position, target, direction), direction);
+	normalize3(cross(worldUp, direction, right), right);
+	cross(direction, right, up);
+	look[0][0] = right[0];
+	look[0][1] = right[1];
+	look[0][2] = right[2];
+	look[1][0] = up[0];
+	look[1][1] = up[1];
+	look[1][2] = up[2];
+	look[2][0] = direction[0];
+	look[2][1] = direction[1];
+	look[2][2] = direction[2];
+	look[3][3] = 1.0F;
+	move[0][0] = 1.0F;
+	move[0][3] = -position[0];
+	move[1][1] = 1.0F;
+	move[1][3] = -position[1];
+	move[2][2] = 1.0F;
+	move[2][3] = -position[2];
+	move[3][3] = 1.0F;
+	return mulMat4(look, move, mat);
+}
+
+float (*genPerspectiveMat4(float fov, float near, float far, float aspect, float mat[4][4]))[4] {
+	float widthHalf = near * tanf(fov / 2.0F);
+	mat[0][0] = near / widthHalf;
+	mat[0][1] = 0.0F;
+	mat[0][2] = 0.0F;
+	mat[0][3] = 0.0F;
+	mat[1][0] = 0.0F;
+	mat[1][1] = near / (widthHalf / aspect);
+	mat[1][2] = 0.0F;
+	mat[1][3] = 0.0F;
+	mat[2][0] = 0.0F;
+	mat[2][1] = 0.0F;
+	mat[2][2] = - (far + near) / (far - near);
+	mat[2][3] = -2.0F * far * near / (far - near);
+	mat[3][0] = 0.0F;
+	mat[3][1] = 0.0F;
+	mat[3][2] = -1.0F;
+	mat[3][3] = 0.0F;
+	return mat;
+}
+
+void printVec4(float vec[4]) {
+	int i;
+	printf("(");
+	for(i = 0;i < 4;i++) {
+		printf("%10f", (double)vec[i]);
+		if(i != 3) printf(", ");
+	}
+	printf(")\n");
+}
+
+void printMat4(float mat[4][4]) {
+	int row, col;
+	for(row = 0;row < 4;row++) {
+		printf("| ");
+		for(col = 0;col < 4;col++) printf("%10f ", (double)mat[row][col]);
+		printf("|\n");
+	}
+	printf("\n");
 }

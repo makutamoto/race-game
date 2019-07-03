@@ -5,8 +5,20 @@
 #include "../include/vector.h"
 
 typedef struct {
-  Vector children;
+  float position[3];
+  float target[3];
+  float worldUp[3];
+  float fov;
+  float nearLimit;
+  float farLimit;
+  float aspect;
+} Camera;
+
+typedef struct {
+  Vector objects;
+  Vector interfaces;
   unsigned char background;
+  Camera camera;
 } Scene;
 
 Scene initScene(void);

@@ -2,6 +2,7 @@
 #define SPRITE_H
 
 #include "./graphics.h"
+#include "./vector.h"
 
 typedef struct _Sprite {
 	char id[10];
@@ -14,12 +15,11 @@ typedef struct _Sprite {
 	float shadowOffset[2];
 	Image image;
 	struct _Sprite *parent;
-	struct _Sprite *children[10];
+	Vector children;
 	int (*behaviour)(struct _Sprite*);
 }	Sprite;
 
 Sprite initSprite(const char *id, Image image);
-int addChild(Sprite *parent, Sprite *child);
 void drawSprite(Sprite *sprite);
 
 #endif

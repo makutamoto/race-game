@@ -15,7 +15,7 @@ static Vector matrixStore;
 static unsigned int currentStore = 0;
 void pushTransformation(void) {
 	float *store = malloc(16 * sizeof(float));
-	copyMat4(transformation, (float(*)[4])store);
+	memcpy_s(store, sizeof(transformation), transformation, sizeof(transformation));
 	push(&matrixStore, store);
 	currentStore += 1;
 }
@@ -24,7 +24,7 @@ void popTransformation(void) {
 	float *store;
 	currentStore -= 1;
 	store = (float*)pop(&matrixStore);
-	copyMat4((float(*)[4])store, transformation);
+	memcpy_s(transformation, sizeof(transformation), store, sizeof(transformation));
 	free(store);
 }
 
@@ -32,21 +32,27 @@ void clearTransformation(void) {
 	genIdentityMat4(transformation);
 }
 
+void mulTransformationL(float mat[4][4]) {
+	float temp[4][4];
+	memcpy_s(temp, sizeof(temp), transformation, sizeof(transformation));
+	mulMat4(mat, temp, transformation);
+}
+
 void translateTransformation(float dx, float dy, float dz) {
 	float temp1[4][4], temp2[4][4];
-	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
+	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(transformation));
 	mulMat4(temp2, genTranslationMat4(dx, dy, dz, temp1), transformation);
 }
 
 void scaleTransformation(float sx, float sy, float sz) {
 	float temp1[4][4], temp2[4][4];
-	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
+	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(transformation));
 	mulMat4(temp2, genScaleMat4(sx, sy, sz, temp1), transformation);
 }
 
 void rotateTransformation(float rx, float ry, float rz) {
 	float temp1[4][4], temp2[4][4];
-	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(temp2));
+	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(transformation));
 	mulMat4(temp2, genRotationMat4(rx, ry, rz, temp1), transformation);
 }
 
@@ -55,12 +61,14 @@ void setBuffer(unsigned char color) {
 }
 
 void fillBuffer(Image image, int shadow) {
+	float halfScreenWidth = bufferSizeCoord.X / 2.0F;
+	float halfScreenHeight = bufferSizeCoord.Y / 2.0F;
 	float halfWidth = image.width / 2.0F;
 	float halfHeight = image.height / 2.0F;
-	float leftTop[4] = { -halfWidth, -halfHeight, 0.0, 1.0 };
-	float leftBottom[4] = { -halfWidth, halfHeight, 0.0, 1.0 };
-	float rightTop[4] = { halfWidth, -halfHeight, 0.0, 1.0 };
-	float rightBottom[4] = { halfWidth, halfHeight, 0.0, 1.0 };
+	float leftTop[4] = { -halfWidth, -halfHeight, 0.0F, 1.0F };
+	float leftBottom[4] = { -halfWidth, halfHeight, 0.0F, 1.0F };
+	float rightTop[4] = { halfWidth, -halfHeight, 0.0F, 1.0F };
+	float rightBottom[4] = { halfWidth, halfHeight, 0.0F, 1.0F };
 	float transformedLeftTop[4];
 	float transformedLeftBottom[4];
 	float transformedRightTop[4];
@@ -72,6 +80,14 @@ void fillBuffer(Image image, int shadow) {
 	mulMat4Vec4(transformation, leftBottom, transformedLeftBottom);
 	mulMat4Vec4(transformation, rightTop, transformedRightTop);
 	mulMat4Vec4(transformation, rightBottom, transformedRightBottom);
+	transformedLeftTop[0] = (transformedLeftTop[0] / transformedLeftTop[3]) * halfScreenWidth + halfScreenWidth;
+	transformedLeftTop[1] = (transformedLeftTop[1] / transformedLeftTop[3]) * halfScreenHeight + halfScreenHeight;
+	transformedLeftBottom[0] = (transformedLeftBottom[0] / transformedLeftBottom[3]) * halfScreenWidth + halfScreenWidth;
+	transformedLeftBottom[1] = (transformedLeftBottom[1] / transformedLeftBottom[3]) * halfScreenHeight + halfScreenHeight;
+	transformedRightTop[0] = (transformedRightTop[0] / transformedRightTop[3]) * halfScreenWidth + halfScreenWidth;
+	transformedRightTop[1] = (transformedRightTop[1] / transformedRightTop[3])  * halfScreenHeight + halfScreenHeight;
+	transformedRightBottom[0] = (transformedRightBottom[0] / transformedRightBottom[3]) * halfScreenWidth + halfScreenWidth;
+	transformedRightBottom[1] = (transformedRightBottom[1] / transformedRightBottom[3]) * halfScreenHeight + halfScreenHeight;
 	maxCoord[0] = (unsigned int)max(min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), bufferSizeCoord.X), 0);
 	maxCoord[1] = (unsigned int)max(min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), bufferSizeCoord.Y), 0);
 	minCoord[0] = (unsigned int)max(min(min(transformedLeftTop[0], transformedLeftBottom[0]), min(transformedRightTop[0], transformedRightBottom[0])), 0);
@@ -82,7 +98,6 @@ void fillBuffer(Image image, int shadow) {
 	axisY[1] = transformedLeftBottom[1] - transformedLeftTop[1];
 	axisXLen = length2(axisX);
 	axisYLen = length2(axisY);
-
 	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
 		unsigned int x;

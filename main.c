@@ -15,14 +15,14 @@
 #pragma comment(lib, "gdi32.lib")
 
 #define NOF_MAX_EVENTS 10
+#define HALF_FIELD_SIZE 100.0F
 
 static HWND window;
 static HANDLE input;
-static HANDLE doubleScreens[2];
-static HANDLE visibleScreen, hiddenScreen;
+static HANDLE screen;
 unsigned char *buffer;
 size_t bufferLength;
-COORD bufferSizeCoord = { 125, 250 };
+COORD bufferSizeCoord = { 125, 125 };
 static INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
 static struct {
 	float move[2];
@@ -30,58 +30,37 @@ static struct {
 	BOOL action;
 } controller;
 
+static Image plane;
 static Image lifeBar;
 static Image hero;
 static Image heroBullet;
 static Image enemy1;
 
+static Sprite planeSprite;
 static Sprite lifeBarSprite;
 static Scene scene;
 static Sprite heroSprite;
-static Sprite enemy1Sprite;
 
-static RECT storedSize;
-static void pushWindowSize(void) {
-	WINDOWINFO info;
-	info.cbSize = sizeof(WINDOWINFO);
-	GetWindowInfo(window, &info);
-	storedSize = info.rcWindow;
-}
-
-static void popWindowSize(void) {
-	MoveWindow(window, storedSize.left, storedSize.top, storedSize.right - storedSize.left, storedSize.bottom - storedSize.top, FALSE);
-}
-
-static HANDLE createScreen(void) {
-	static CONSOLE_CURSOR_INFO info = { 1, FALSE };
+static void initScreen(void) {
+	CONSOLE_CURSOR_INFO info = { 1, FALSE };
 	COORD actualBufferSize;
 	CONSOLE_FONT_INFOEX font = { .cbSize = sizeof(CONSOLE_FONT_INFOEX) };
-	HANDLE screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
-	pushWindowSize();
+	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 	SetConsoleActiveScreenBuffer(screen);
-	SetConsoleCursorInfo(screen, &info);
 	GetCurrentConsoleFontEx(screen, FALSE, &font);
-	font.dwFontSize.X = 1;
-	font.dwFontSize.Y = 1;
+	font.dwFontSize.X = 3;
+	font.dwFontSize.Y = 5;
 	SetCurrentConsoleFontEx(screen, FALSE, &font);
 	actualBufferSize.X = 2 * bufferSizeCoord.X;
 	actualBufferSize.Y = bufferSizeCoord.Y;
 	SetConsoleScreenBufferSize(screen, actualBufferSize);
-	popWindowSize();
-	return screen;
-}
-
-static void swapScreens(void) {
-	static int visible = 1;
-	hiddenScreen = doubleScreens[visible];
-	visibleScreen = doubleScreens[(visible ^= 1)];
-	SetConsoleActiveScreenBuffer(visibleScreen);
+	SetConsoleCursorInfo(screen, &info);
 }
 
 static int enemy1Behaviour(Sprite *sprite) {
 	float direction[2];
   // if(sprite->collisionTarget != NULL && !strcmp(sprite->collisionTarget->name, "bullet")) {
-  //   removeByData(&scene.children, sprite->collisionTarget);
+  //   removeByData(&scene.objects, sprite->collisionTarget);
   //   sprite->collisionTarget = NULL;
   // }
   direction2(heroSprite.position, sprite->position, direction);
@@ -90,22 +69,36 @@ static int enemy1Behaviour(Sprite *sprite) {
 	return TRUE;
 }
 
+static Sprite* spawnEnemy1() {
+	Sprite *enemy = malloc(sizeof(Sprite));
+	Sprite *bar = malloc(sizeof(Sprite));
+	*enemy = initSprite("Enemy1", enemy1);
+	*bar = initSprite("EnemyLifeBar", genRect(20, 5, RED));
+	enemy->shadowScale = 0.75;
+	enemy->shadowOffset[1] = 10.0;
+	enemy->behaviour = enemy1Behaviour;
+	bar->position[1] = enemy->image.height / 2.0F + 5.0F;
+	push(&enemy->children, bar);
+	push(&scene.objects, enemy);
+	return enemy;
+}
+
 static int bulletBehaviour(Sprite *sprite) {
 	if(distance2(heroSprite.position, sprite->position) > 300) {
-		removeByData(&scene.children, sprite);
+		removeByData(&scene.objects, sprite);
 		free(sprite);
 		return FALSE;
 	}
-	sprite->position[0] += cosf(sprite->angle[2] - PI / 2.0F);
-	sprite->position[1] += sinf(sprite->angle[2] - PI / 2.0F);
+	sprite->position[0] += 2.0F * cosf(sprite->angle[2] - PI / 2.0F);
+	sprite->position[1] += 2.0F * sinf(sprite->angle[2] - PI / 2.0F);
 	return TRUE;
 }
 
 static int heroBehaviour(Sprite *sprite) {
 	float move[2];
 	addVec2(sprite->position, mulVec2ByScalar(controller.move, 0.75F, move), sprite->position);
-	sprite->position[0] = max(min(sprite->position[0], bufferSizeCoord.X), 0.0);
-	sprite->position[1] = max(min(sprite->position[1], bufferSizeCoord.Y / 2.0F), 0.0);
+	sprite->position[0] = max(min(sprite->position[0], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
+	sprite->position[1] = max(min(sprite->position[1], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
 	sprite->angle[2] = angleVec2(controller.direction) + PI / 2.0F;
 	if(controller.action) {
 		Sprite *bullet = malloc(sizeof(Sprite));
@@ -114,7 +107,7 @@ static int heroBehaviour(Sprite *sprite) {
 		bullet->position[0] = sprite->position[0];
 		bullet->position[1] = sprite->position[1];
 		bullet->behaviour = bulletBehaviour;
-		push(&scene.children, bullet);
+		push(&scene.objects, bullet);
 		controller.action = FALSE;
 	}
 	return TRUE;
@@ -123,34 +116,28 @@ static int heroBehaviour(Sprite *sprite) {
 static void initialize(void) {
 	window = GetConsoleWindow();
 	input = GetStdHandle(STD_INPUT_HANDLE);
-	doubleScreens[0] = createScreen();
-	doubleScreens[1] = createScreen();
-	swapScreens();
+	initScreen();
 	bufferLength = (size_t)(bufferSizeCoord.X * bufferSizeCoord.Y);
 	buffer = (unsigned char*)malloc(bufferLength);
-	lifeBar = genRect(50, 10, RED);
+	plane = genRect(100, 100, BLACK);
+	lifeBar = genRect(5, 1, RED);
 	hero = loadBitmap("assets/hero.bmp", BLACK);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", BLACK);
 	scene = initScene();
 	scene.background = BLUE;
+	planeSprite = initSprite("Sprite", plane);
 	lifeBarSprite = initSprite("heroSprite", lifeBar);
-	lifeBarSprite.position[0] = 30.0;
-	lifeBarSprite.position[1] = 10.0;
-	lifeBarSprite.shadowScale = 0.5;
-	lifeBarSprite.shadowOffset[0] = 1.0;
-	lifeBarSprite.shadowOffset[1] = 1.0;
+	// lifeBarSprite.position[0] = 0.01;
+	// lifeBarSprite.position[1] = 0.01;
 	heroSprite = initSprite("Hero", hero);
 	heroSprite.shadowScale = 0.75;
 	heroSprite.shadowOffset[1] = 10.0;
 	heroSprite.behaviour = heroBehaviour;
-	enemy1Sprite = initSprite("Enemy1", enemy1);
-	enemy1Sprite.shadowScale = 0.75;
-	enemy1Sprite.shadowOffset[1] = 10.0;
-	enemy1Sprite.behaviour = enemy1Behaviour;
-	push(&scene.children, &lifeBarSprite);
-	push(&scene.children, &heroSprite);
-	push(&scene.children, &enemy1Sprite);
+	// push(&scene.interfaces, &lifeBarSprite);
+	push(&scene.objects, &heroSprite);
+	push(&scene.objects, &planeSprite);
+	spawnEnemy1();
 }
 
 static BOOL pollEvents(void) {
@@ -224,18 +211,17 @@ static BOOL pollEvents(void) {
 }
 
 static void flush(void) {
-	DWORD nofWritten;
+	DWORD nofWritten = 2 * (DWORD)bufferLength;
 	static COORD cursor = { 0, 0 };
-	WORD *data = (WORD*)malloc(2 * bufferLength * sizeof(WORD));
+	WORD *data = (WORD*)malloc(nofWritten * sizeof(WORD));
 	size_t index;
 	for(index = 0;index < bufferLength;index++) {
 		WORD attribute = (WORD)(BACKGROUND_BLUE - 1 + (((buffer[index] & 8) | ((buffer[index] & 1) << 2) | (buffer[index] & 2) | ((buffer[index] & 4) >> 2)) << 4));
 		data[2 * index] = attribute;
 		data[2 * index + 1] = attribute;
 	}
-	WriteConsoleOutputAttribute(hiddenScreen, data, (DWORD)bufferLength, cursor, &nofWritten);
+	WriteConsoleOutputAttribute(screen, data, nofWritten, cursor, &nofWritten);
 	free(data);
-	swapScreens();
 }
 
 static void deinitialize(void) {
@@ -251,7 +237,6 @@ int main(void) {
 	while(TRUE) {
 		if(!pollEvents()) break;
 		memset(buffer, 0, bufferLength);
-		clearTransformation();
 		drawScene(&scene);
 		flush();
 	}

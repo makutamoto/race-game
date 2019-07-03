@@ -17,6 +17,7 @@ extern COORD bufferSizeCoord;
 void pushTransformation(void);
 void popTransformation(void);
 void clearTransformation(void);
+void mulTransformationL(float a[4][4]);
 void translateTransformation(float dx, float dy, float dz);
 void scaleTransformation(float sx, float sy, float sz);
 void rotateTransformation(float rx, float ry, float rz);
