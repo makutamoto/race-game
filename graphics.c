@@ -9,10 +9,52 @@
 #include "./include/colors.h"
 #include "./include/vector.h"
 
-static float transformation[4][4];
+static unsigned char *buffer;
+static unsigned int bufferSize[2];
+static unsigned long bufferLength;
+static unsigned int screenSize[2];
+static unsigned long screenLength;
+static unsigned int halfScreenSize[2];
 
+static float transformation[4][4];
 static Vector matrixStore;
 static unsigned int currentStore = 0;
+
+void initGraphics(unsigned int width, unsigned int height) {
+	bufferSize[0] = 2 * width;
+	bufferSize[1] = height;
+	bufferLength = bufferSize[0] * bufferSize[1];
+	if(buffer) free(buffer);
+	buffer = malloc(bufferLength);
+	screenSize[0] = width;
+	screenSize[1] = height;
+	screenLength = screenSize[0] * screenSize[1];
+	halfScreenSize[0] = screenSize[0] / 2;
+	halfScreenSize[1] = screenSize[1] / 2;
+}
+
+void deinitGraphics(void) {
+	if(buffer) free(buffer);
+}
+
+void clearBuffer(unsigned char color) {
+	memset(buffer, color, bufferLength);
+}
+
+void flushBuffer(HANDLE screen) {
+	DWORD nofWritten;
+	static COORD cursor = { 0, 0 };
+	WORD *data = (WORD*)malloc(bufferLength * sizeof(WORD));
+	size_t index;
+	for(index = 0;index < screenLength;index++) {
+		WORD attribute = (WORD)(BACKGROUND_BLUE - 1 + (((buffer[index] & 8) | ((buffer[index] & 1) << 2) | (buffer[index] & 2) | ((buffer[index] & 4) >> 2)) << 4));
+		data[2 * index] = attribute;
+		data[2 * index + 1] = attribute;
+	}
+	WriteConsoleOutputAttribute(screen, data, bufferLength, cursor, &nofWritten);
+	free(data);
+}
+
 void pushTransformation(void) {
 	float *store = malloc(16 * sizeof(float));
 	memcpy_s(store, sizeof(transformation), transformation, sizeof(transformation));
@@ -56,13 +98,7 @@ void rotateTransformation(float rx, float ry, float rz) {
 	mulMat4(temp2, genRotationMat4(rx, ry, rz, temp1), transformation);
 }
 
-void setBuffer(unsigned char color) {
-	for(size_t i = 0;i < bufferLength;i++) buffer[i] = color;
-}
-
 void fillBuffer(Image image, int shadow) {
-	float halfScreenWidth = bufferSizeCoord.X / 2.0F;
-	float halfScreenHeight = bufferSizeCoord.Y / 2.0F;
 	float halfWidth = image.width / 2.0F;
 	float halfHeight = image.height / 2.0F;
 	float leftTop[4] = { -halfWidth, -halfHeight, 0.0F, 1.0F };
@@ -80,16 +116,16 @@ void fillBuffer(Image image, int shadow) {
 	mulMat4Vec4(transformation, leftBottom, transformedLeftBottom);
 	mulMat4Vec4(transformation, rightTop, transformedRightTop);
 	mulMat4Vec4(transformation, rightBottom, transformedRightBottom);
-	transformedLeftTop[0] = (transformedLeftTop[0] / transformedLeftTop[3]) * halfScreenWidth + halfScreenWidth;
-	transformedLeftTop[1] = (transformedLeftTop[1] / transformedLeftTop[3]) * halfScreenHeight + halfScreenHeight;
-	transformedLeftBottom[0] = (transformedLeftBottom[0] / transformedLeftBottom[3]) * halfScreenWidth + halfScreenWidth;
-	transformedLeftBottom[1] = (transformedLeftBottom[1] / transformedLeftBottom[3]) * halfScreenHeight + halfScreenHeight;
-	transformedRightTop[0] = (transformedRightTop[0] / transformedRightTop[3]) * halfScreenWidth + halfScreenWidth;
-	transformedRightTop[1] = (transformedRightTop[1] / transformedRightTop[3])  * halfScreenHeight + halfScreenHeight;
-	transformedRightBottom[0] = (transformedRightBottom[0] / transformedRightBottom[3]) * halfScreenWidth + halfScreenWidth;
-	transformedRightBottom[1] = (transformedRightBottom[1] / transformedRightBottom[3]) * halfScreenHeight + halfScreenHeight;
-	maxCoord[0] = (unsigned int)max(min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), bufferSizeCoord.X), 0);
-	maxCoord[1] = (unsigned int)max(min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), bufferSizeCoord.Y), 0);
+	transformedLeftTop[0] = (transformedLeftTop[0] / transformedLeftTop[3]) * halfScreenSize[0] + halfScreenSize[0];
+	transformedLeftTop[1] = (transformedLeftTop[1] / transformedLeftTop[3]) * halfScreenSize[1] + halfScreenSize[1];
+	transformedLeftBottom[0] = (transformedLeftBottom[0] / transformedLeftBottom[3]) * halfScreenSize[0] + halfScreenSize[0];
+	transformedLeftBottom[1] = (transformedLeftBottom[1] / transformedLeftBottom[3]) * halfScreenSize[1] + halfScreenSize[1];
+	transformedRightTop[0] = (transformedRightTop[0] / transformedRightTop[3]) * halfScreenSize[0] + halfScreenSize[0];
+	transformedRightTop[1] = (transformedRightTop[1] / transformedRightTop[3])  * halfScreenSize[1] + halfScreenSize[1];
+	transformedRightBottom[0] = (transformedRightBottom[0] / transformedRightBottom[3]) * halfScreenSize[0] + halfScreenSize[0];
+	transformedRightBottom[1] = (transformedRightBottom[1] / transformedRightBottom[3]) * halfScreenSize[1] + halfScreenSize[1];
+	maxCoord[0] = (unsigned int)max(min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), screenSize[0]), 0);
+	maxCoord[1] = (unsigned int)max(min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), screenSize[1]), 0);
 	minCoord[0] = (unsigned int)max(min(min(transformedLeftTop[0], transformedLeftBottom[0]), min(transformedRightTop[0], transformedRightBottom[0])), 0);
 	minCoord[1] = (unsigned int)max(min(min(transformedLeftTop[1], transformedLeftBottom[1]), min(transformedRightTop[1], transformedRightBottom[1])), 0);
 	axisX[0] = transformedRightTop[0] - transformedLeftTop[0];
@@ -107,7 +143,7 @@ void fillBuffer(Image image, int shadow) {
 			if(dataCoords[0] >= 0.0F && dataCoords[0] < 1.0F && dataCoords[1] >= 0.0F && dataCoords[1] < 1.0F) {
 				unsigned char color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
 				if(color != image.transparent) {
-					size_t index = (size_t)bufferSizeCoord.X * y + x;
+					size_t index = (size_t)screenSize[0] * y + x;
 					if(shadow) {
 						if((buffer[index] >> 3) & 1) {
 							color = buffer[index] ^ 0x0E;
@@ -115,6 +151,47 @@ void fillBuffer(Image image, int shadow) {
 							color = BLACK;
 						}
 					}
+					buffer[index] = color;
+				}
+			}
+		}
+	}
+}
+
+void fillTriangle(Vertex vertices[3], Image image) {
+	float transformed[3][4];
+	unsigned int maxCoord[2], minCoord[2];
+	float axisX[2], axisY[2];
+	float axisXLen, axisYLen;
+	mulMat4Vec4(transformation, vertices[0].components, transformed[0]);
+	mulMat4Vec4(transformation, vertices[1].components, transformed[1]);
+	mulMat4Vec4(transformation, vertices[2].components, transformed[2]);
+	transformed[0][0] = (transformed[0][0] / transformed[0][3]) * halfScreenSize[0] + halfScreenSize[0];
+	transformed[0][1] = (transformed[0][1] / transformed[0][3]) * halfScreenSize[1] + halfScreenSize[1];
+	transformed[1][0] = (transformed[1][0] / transformed[1][3]) * halfScreenSize[0] + halfScreenSize[0];
+	transformed[1][1] = (transformed[1][1] / transformed[1][3]) * halfScreenSize[1] + halfScreenSize[1];
+	transformed[2][0] = (transformed[2][0] / transformed[2][3]) * halfScreenSize[0] + halfScreenSize[0];
+	transformed[2][1] = (transformed[2][1] / transformed[2][3])  * halfScreenSize[1] + halfScreenSize[1];
+	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), screenSize[0]), 0);
+	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), screenSize[1]), 0);
+	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
+	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
+	axisX[0] = transformed[2][0] - transformed[0][0];
+	axisX[1] = transformed[2][1] - transformed[0][1];
+	axisY[0] = transformed[1][0] - transformed[0][0];
+	axisY[1] = transformed[1][1] - transformed[0][1];
+	axisXLen = length2(axisX);
+	axisYLen = length2(axisY);
+	unsigned int y;
+	for(y = minCoord[1];y < maxCoord[1];y++) {
+		unsigned int x;
+		for(x = minCoord[0];x < maxCoord[0];x++) {
+			float vector[2] = { (int)x - transformed[0][0], (int)y - transformed[0][1] };
+			float dataCoords[2] = { dot2(vector, axisX) / (axisXLen * axisXLen), dot2(vector, axisY) / (axisYLen * axisYLen) };
+			if(dataCoords[0] >= 0.0F && dataCoords[0] < 1.0F && dataCoords[1] >= 0.0F && dataCoords[1] < 1.0F) {
+				unsigned char color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
+				if(color != image.transparent) {
+					size_t index = (size_t)screenSize[0] * y + x;
 					buffer[index] = color;
 				}
 			}

@@ -13,7 +13,9 @@ typedef struct _Sprite {
 	float scale[3];
 	float shadowScale;
 	float shadowOffset[2];
-	Image image;
+	Vector vertices;
+	Vector indices;
+	Image texture;
 	struct _Sprite *parent;
 	Vector children;
 	int (*behaviour)(struct _Sprite*);

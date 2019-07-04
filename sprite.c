@@ -11,7 +11,7 @@ Sprite initSprite(const char *id, Image image) {
 	sprite.scale[0] = 1.0;
 	sprite.scale[1] = 1.0;
   sprite.scale[2] = 1.0;
-	sprite.image = image;
+	sprite.texture = image;
   sprite.children = initVector();
 	return sprite;
 }
@@ -27,11 +27,11 @@ void drawSprite(Sprite *sprite) {
 	pushTransformation();
   translateTransformation(sprite->shadowOffset[0], sprite->shadowOffset[1], 0.0);
 	scaleTransformation(sprite->shadowScale, sprite->shadowScale, 1.0);
-	if(sprite->shadowOffset[0] != 0.0F || sprite->shadowOffset[1] != 0.0F) fillBuffer(sprite->image, TRUE);
+	if(sprite->shadowOffset[0] != 0.0F || sprite->shadowOffset[1] != 0.0F) fillBuffer(sprite->texture, TRUE);
 	popTransformation();
   resetIteration(&sprite->children);
   while((child = previousData(&sprite->children))) drawSprite(child);
   scaleTransformation(sprite->scale[0], sprite->scale[1], sprite->scale[2]);
-	fillBuffer(sprite->image, FALSE);
+	fillBuffer(sprite->texture, FALSE);
 	popTransformation();
 }

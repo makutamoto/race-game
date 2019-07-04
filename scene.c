@@ -1,3 +1,5 @@
+#include<Windows.h>
+
 #include "./include/scene.h"
 #include "./include/sprite.h"
 #include "./include/vector.h"
@@ -21,7 +23,7 @@ Scene initScene(void) {
   return scene;
 }
 
-void drawScene(Scene *scene) {
+void drawScene(Scene *scene, HANDLE screen) {
   Sprite *sprite;
   float lookAt[4][4];
   float projection[4][4];
@@ -31,7 +33,7 @@ void drawScene(Scene *scene) {
   genPerspectiveMat4(scene->camera.fov, scene->camera.nearLimit, scene->camera.farLimit, scene->camera.aspect, projection);
   mulMat4(projection, lookAt, camera);
   mulTransformationL(camera);
-  setBuffer(scene->background);
+  clearBuffer(scene->background);
   resetIteration(&scene->objects);
   while((sprite = previousData(&scene->objects))) {
     // Sprite *collisionTarget;
@@ -49,6 +51,7 @@ void drawScene(Scene *scene) {
   clearTransformation();
   resetIteration(&scene->interfaces);
   while((sprite = previousData(&scene->interfaces))) drawSprite(sprite);
+  flushBuffer(screen);
 }
 
 void discardScene(Scene *scene) {

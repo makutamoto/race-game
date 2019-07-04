@@ -20,9 +20,6 @@
 static HWND window;
 static HANDLE input;
 static HANDLE screen;
-unsigned char *buffer;
-size_t bufferLength;
-COORD bufferSizeCoord = { 125, 125 };
 static INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
 static struct {
 	float move[2];
@@ -30,20 +27,18 @@ static struct {
 	BOOL action;
 } controller;
 
-static Image plane;
 static Image lifeBar;
 static Image hero;
 static Image heroBullet;
 static Image enemy1;
 
-static Sprite planeSprite;
 static Sprite lifeBarSprite;
 static Scene scene;
 static Sprite heroSprite;
 
-static void initScreen(void) {
+static void initScreen(short width, short height) {
 	CONSOLE_CURSOR_INFO info = { 1, FALSE };
-	COORD actualBufferSize;
+	COORD bufferSize;
 	CONSOLE_FONT_INFOEX font = { .cbSize = sizeof(CONSOLE_FONT_INFOEX) };
 	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 	SetConsoleActiveScreenBuffer(screen);
@@ -51,9 +46,9 @@ static void initScreen(void) {
 	font.dwFontSize.X = 3;
 	font.dwFontSize.Y = 5;
 	SetCurrentConsoleFontEx(screen, FALSE, &font);
-	actualBufferSize.X = 2 * bufferSizeCoord.X;
-	actualBufferSize.Y = bufferSizeCoord.Y;
-	SetConsoleScreenBufferSize(screen, actualBufferSize);
+	bufferSize.X = 2 * width;
+	bufferSize.Y = height;
+	SetConsoleScreenBufferSize(screen, bufferSize);
 	SetConsoleCursorInfo(screen, &info);
 }
 
@@ -77,7 +72,7 @@ static Sprite* spawnEnemy1() {
 	enemy->shadowScale = 0.75;
 	enemy->shadowOffset[1] = 10.0;
 	enemy->behaviour = enemy1Behaviour;
-	bar->position[1] = enemy->image.height / 2.0F + 5.0F;
+	bar->position[1] = enemy->texture.height / 2.0F + 5.0F;
 	push(&enemy->children, bar);
 	push(&scene.objects, enemy);
 	return enemy;
@@ -116,17 +111,14 @@ static int heroBehaviour(Sprite *sprite) {
 static void initialize(void) {
 	window = GetConsoleWindow();
 	input = GetStdHandle(STD_INPUT_HANDLE);
-	initScreen();
-	bufferLength = (size_t)(bufferSizeCoord.X * bufferSizeCoord.Y);
-	buffer = (unsigned char*)malloc(bufferLength);
-	plane = genRect(100, 100, BLACK);
+	initScreen(125, 125);
+	initGraphics(125, 125);
 	lifeBar = genRect(5, 1, RED);
-	hero = loadBitmap("assets/hero.bmp", BLACK);
+	hero = loadBitmap("assets/hero.bmp", NULL_COLOR);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", BLACK);
 	scene = initScene();
 	scene.background = BLUE;
-	planeSprite = initSprite("Sprite", plane);
 	lifeBarSprite = initSprite("heroSprite", lifeBar);
 	// lifeBarSprite.position[0] = 0.01;
 	// lifeBarSprite.position[1] = 0.01;
@@ -136,7 +128,6 @@ static void initialize(void) {
 	heroSprite.behaviour = heroBehaviour;
 	// push(&scene.interfaces, &lifeBarSprite);
 	push(&scene.objects, &heroSprite);
-	push(&scene.objects, &planeSprite);
 	spawnEnemy1();
 }
 
@@ -210,35 +201,19 @@ static BOOL pollEvents(void) {
 	return TRUE;
 }
 
-static void flush(void) {
-	DWORD nofWritten = 2 * (DWORD)bufferLength;
-	static COORD cursor = { 0, 0 };
-	WORD *data = (WORD*)malloc(nofWritten * sizeof(WORD));
-	size_t index;
-	for(index = 0;index < bufferLength;index++) {
-		WORD attribute = (WORD)(BACKGROUND_BLUE - 1 + (((buffer[index] & 8) | ((buffer[index] & 1) << 2) | (buffer[index] & 2) | ((buffer[index] & 4) >> 2)) << 4));
-		data[2 * index] = attribute;
-		data[2 * index + 1] = attribute;
-	}
-	WriteConsoleOutputAttribute(screen, data, nofWritten, cursor, &nofWritten);
-	free(data);
-}
-
 static void deinitialize(void) {
 	freeImage(lifeBar);
 	freeImage(hero);
 	freeImage(heroBullet);
 	discardScene(&scene);
-	free(buffer);
+	deinitGraphics();
 }
 
 int main(void) {
 	initialize();
 	while(TRUE) {
 		if(!pollEvents()) break;
-		memset(buffer, 0, bufferLength);
-		drawScene(&scene);
-		flush();
+		drawScene(&scene, screen);
 	}
 	deinitialize();
 	return 0;

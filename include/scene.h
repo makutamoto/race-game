@@ -1,6 +1,8 @@
 #ifndef SCENE_H
 #define SCENE_H
 
+#include<Windows.h>
+
 #include "../include/sprite.h"
 #include "../include/vector.h"
 
@@ -22,7 +24,7 @@ typedef struct {
 } Scene;
 
 Scene initScene(void);
-void drawScene(Scene *scene);
+void drawScene(Scene *scene, HANDLE screen);
 void discardScene(Scene *scene);
 
 #endif

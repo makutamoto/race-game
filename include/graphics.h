@@ -3,6 +3,19 @@
 
 #include<Windows.h>
 
+typedef enum {
+	SCALAR, TEXTURE
+} ColorType;
+
+typedef struct _Vertex {
+	float components[4];
+	ColorType type;
+	union {
+		unsigned char scalar;
+		float texture[2];
+	}	color;
+} Vertex;
+
 typedef struct {
 	unsigned int width;
 	unsigned int height;
@@ -10,9 +23,10 @@ typedef struct {
 	unsigned char *data;
 } Image;
 
-extern unsigned char *buffer;
-extern size_t bufferLength;
-extern COORD bufferSizeCoord;
+void initGraphics(unsigned int width, unsigned int height);
+void deinitGraphics(void);
+void clearBuffer(unsigned char color);
+void flushBuffer(HANDLE screen);
 
 void pushTransformation(void);
 void popTransformation(void);
@@ -22,7 +36,6 @@ void translateTransformation(float dx, float dy, float dz);
 void scaleTransformation(float sx, float sy, float sz);
 void rotateTransformation(float rx, float ry, float rz);
 
-void setBuffer(unsigned char color);
 void fillBuffer(Image image, int shadow);
 
 Image loadBitmap(char *fileName, unsigned char transparent);
