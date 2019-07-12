@@ -13,6 +13,7 @@
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "Winmm.lib")
 
 #define NOF_MAX_EVENTS 10
 #define HALF_FIELD_SIZE 100.0F
@@ -31,10 +32,12 @@ static Image lifeBar;
 static Image hero;
 static Image heroBullet;
 static Image enemy1;
+static Image stage;
 
 static Sprite lifeBarSprite;
 static Scene scene;
 static Sprite heroSprite;
+static Sprite stageSprite;
 
 static void initScreen(short width, short height) {
 	CONSOLE_CURSOR_INFO info = { 1, FALSE };
@@ -54,25 +57,28 @@ static void initScreen(short width, short height) {
 
 static int enemy1Behaviour(Sprite *sprite) {
 	float direction[2];
-  // if(sprite->collisionTarget != NULL && !strcmp(sprite->collisionTarget->name, "bullet")) {
-  //   removeByData(&scene.objects, sprite->collisionTarget);
-  //   sprite->collisionTarget = NULL;
-  // }
-  direction2(heroSprite.position, sprite->position, direction);
-  mulVec2ByScalar(direction,  min(3.0F, distance2(heroSprite.position, sprite->position) - 50.0F), direction);
-	addVec2(sprite->position, direction, sprite->position);
-	return TRUE;
+	// if(sprite->collisionTarget != NULL && !strcmp(sprite->collisionTarget->name, "bullet")) {
+		//   removeByData(&scene.objects, sprite->collisionTarget);
+		//   sprite->collisionTarget = NULL;
+		// }
+		direction2(heroSprite.position, sprite->position, direction);
+		mulVec2ByScalar(direction,  min(1.0F, distance2(heroSprite.position, sprite->position) - 50.0F), direction);
+		addVec2(sprite->position, direction, sprite->position);
+		return TRUE;
 }
 
-static Sprite* spawnEnemy1() {
+static Sprite* spawnEnemy1(float x, float y) {
 	Sprite *enemy = malloc(sizeof(Sprite));
 	Sprite *bar = malloc(sizeof(Sprite));
 	*enemy = initSprite("Enemy1", enemy1);
 	*bar = initSprite("EnemyLifeBar", genRect(20, 5, RED));
+	enemy->position[0] = x;
+	enemy->position[1] = y;
 	enemy->shadowScale = 0.75;
 	enemy->shadowOffset[1] = 10.0;
 	enemy->behaviour = enemy1Behaviour;
 	bar->position[1] = enemy->texture.height / 2.0F + 5.0F;
+	bar->isInterface = TRUE;
 	push(&enemy->children, bar);
 	push(&scene.objects, enemy);
 	return enemy;
@@ -104,6 +110,7 @@ static int heroBehaviour(Sprite *sprite) {
 		bullet->behaviour = bulletBehaviour;
 		push(&scene.objects, bullet);
 		controller.action = FALSE;
+		PlaySound(TEXT("assets/laser.wav"), NULL, SND_ASYNC | SND_FILENAME);
 	}
 	return TRUE;
 }
@@ -114,12 +121,15 @@ static void initialize(void) {
 	initScreen(125, 125);
 	initGraphics(125, 125);
 	lifeBar = genRect(5, 1, RED);
-	hero = loadBitmap("assets/hero.bmp", NULL_COLOR);
+	hero = loadBitmap("assets/hero.bmp", BLACK);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", BLACK);
+	stage = loadBitmap("assets/stage.bmp", BLACK);
 	scene = initScene();
 	scene.background = BLUE;
 	lifeBarSprite = initSprite("heroSprite", lifeBar);
+	stageSprite = initSprite("stage", stage);
+	stageSprite.position[2] = 10.0;
 	// lifeBarSprite.position[0] = 0.01;
 	// lifeBarSprite.position[1] = 0.01;
 	heroSprite = initSprite("Hero", hero);
@@ -128,7 +138,8 @@ static void initialize(void) {
 	heroSprite.behaviour = heroBehaviour;
 	// push(&scene.interfaces, &lifeBarSprite);
 	push(&scene.objects, &heroSprite);
-	spawnEnemy1();
+	push(&scene.objects, &stageSprite);
+	spawnEnemy1(0.0F, -2000.0F);
 }
 
 static BOOL pollEvents(void) {
@@ -213,6 +224,8 @@ int main(void) {
 	initialize();
 	while(TRUE) {
 		if(!pollEvents()) break;
+		scene.camera.target[0] = heroSprite.position[0];
+		scene.camera.target[1] = heroSprite.position[1];
 		drawScene(&scene, screen);
 	}
 	deinitialize();

@@ -12,6 +12,7 @@ float* cross(float a[3], float b[3], float out[3]);
 float length2(const float vector[2]);
 float length3(const float vector[3]);
 float distance2(const float a[2], const float b[2]);
+float distancePoint2(const float point[2], const float vector[2]);
 float* addVec2(const float a[2], const float b[2], float out[2]);
 float* addVec3(const float a[3], const float b[3], float out[3]);
 float* subVec2(const float a[2], const float b[2], float out[2]);

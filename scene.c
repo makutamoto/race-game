@@ -11,7 +11,7 @@ Scene initScene(void) {
     .objects = initVector(),
     .interfaces = initVector(),
     .camera = {
-      .position = { 0.0F, 50.0F, 100.0F },
+      .position = { 0.0F, 100.0F, 200.0F },
       .target = { 0.0F, 0.0F, 0.0F },
       .worldUp = { 0.0F, 1.0F, 0.0F },
       .fov = PI / 2.0F,
@@ -34,7 +34,9 @@ void drawScene(Scene *scene, HANDLE screen) {
   mulMat4(projection, lookAt, camera);
   mulTransformationL(camera);
   clearBuffer(scene->background);
+  clearZBuffer();
   resetIteration(&scene->objects);
+
   while((sprite = previousData(&scene->objects))) {
     // Sprite *collisionTarget;
     // VectorItem *item = scene->children.currentItem;

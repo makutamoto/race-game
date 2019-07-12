@@ -1,4 +1,5 @@
 #include<stdio.h>
+#include<float.h>
 #include<stdint.h>
 #include<math.h>
 #include<Windows.h>
@@ -10,8 +11,10 @@
 #include "./include/vector.h"
 
 static unsigned char *buffer;
+static float *zBuffer;
 static unsigned int bufferSize[2];
 static unsigned long bufferLength;
+static unsigned long zBufferLength;
 static unsigned int screenSize[2];
 static unsigned long screenLength;
 static unsigned int halfScreenSize[2];
@@ -24,8 +27,11 @@ void initGraphics(unsigned int width, unsigned int height) {
 	bufferSize[0] = 2 * width;
 	bufferSize[1] = height;
 	bufferLength = bufferSize[0] * bufferSize[1];
+	zBufferLength = sizeof(float) * bufferLength;
 	if(buffer) free(buffer);
+	if(zBuffer) free(zBuffer);
 	buffer = malloc(bufferLength);
+	zBuffer = malloc(zBufferLength);
 	screenSize[0] = width;
 	screenSize[1] = height;
 	screenLength = screenSize[0] * screenSize[1];
@@ -39,6 +45,11 @@ void deinitGraphics(void) {
 
 void clearBuffer(unsigned char color) {
 	memset(buffer, color, bufferLength);
+}
+
+void clearZBuffer(void) {
+	unsigned long i;
+	for(i = 0;i < bufferLength;i++) zBuffer[i] = -FLT_MAX;
 }
 
 void flushBuffer(HANDLE screen) {
@@ -98,104 +109,68 @@ void rotateTransformation(float rx, float ry, float rz) {
 	mulMat4(temp2, genRotationMat4(rx, ry, rz, temp1), transformation);
 }
 
-void fillBuffer(Image image, int shadow) {
-	float halfWidth = image.width / 2.0F;
-	float halfHeight = image.height / 2.0F;
-	float leftTop[4] = { -halfWidth, -halfHeight, 0.0F, 1.0F };
-	float leftBottom[4] = { -halfWidth, halfHeight, 0.0F, 1.0F };
-	float rightTop[4] = { halfWidth, -halfHeight, 0.0F, 1.0F };
-	float rightBottom[4] = { halfWidth, halfHeight, 0.0F, 1.0F };
-	float transformedLeftTop[4];
-	float transformedLeftBottom[4];
-	float transformedRightTop[4];
-	float transformedRightBottom[4];
+static inline float edgeFunction(float x, float y, const float a[2], const float b[2]) {
+	return (a[0] - b[0]) * (y - a[1]) - (a[1] - b[1]) * (x - a[0]);
+}
+
+void fillTriangle(Vertex vertices[3], Image image) {
+	float transformed[3][4];
 	unsigned int maxCoord[2], minCoord[2];
-	float axisX[2], axisY[2];
-	float axisXLen, axisYLen;
-	mulMat4Vec4(transformation, leftTop, transformedLeftTop);
-	mulMat4Vec4(transformation, leftBottom, transformedLeftBottom);
-	mulMat4Vec4(transformation, rightTop, transformedRightTop);
-	mulMat4Vec4(transformation, rightBottom, transformedRightBottom);
-	transformedLeftTop[0] = (transformedLeftTop[0] / transformedLeftTop[3]) * halfScreenSize[0] + halfScreenSize[0];
-	transformedLeftTop[1] = (transformedLeftTop[1] / transformedLeftTop[3]) * halfScreenSize[1] + halfScreenSize[1];
-	transformedLeftBottom[0] = (transformedLeftBottom[0] / transformedLeftBottom[3]) * halfScreenSize[0] + halfScreenSize[0];
-	transformedLeftBottom[1] = (transformedLeftBottom[1] / transformedLeftBottom[3]) * halfScreenSize[1] + halfScreenSize[1];
-	transformedRightTop[0] = (transformedRightTop[0] / transformedRightTop[3]) * halfScreenSize[0] + halfScreenSize[0];
-	transformedRightTop[1] = (transformedRightTop[1] / transformedRightTop[3])  * halfScreenSize[1] + halfScreenSize[1];
-	transformedRightBottom[0] = (transformedRightBottom[0] / transformedRightBottom[3]) * halfScreenSize[0] + halfScreenSize[0];
-	transformedRightBottom[1] = (transformedRightBottom[1] / transformedRightBottom[3]) * halfScreenSize[1] + halfScreenSize[1];
-	maxCoord[0] = (unsigned int)max(min(max(max(transformedLeftTop[0], transformedLeftBottom[0]), max(transformedRightTop[0], transformedRightBottom[0])), screenSize[0]), 0);
-	maxCoord[1] = (unsigned int)max(min(max(max(transformedLeftTop[1], transformedLeftBottom[1]), max(transformedRightTop[1], transformedRightBottom[1])), screenSize[1]), 0);
-	minCoord[0] = (unsigned int)max(min(min(transformedLeftTop[0], transformedLeftBottom[0]), min(transformedRightTop[0], transformedRightBottom[0])), 0);
-	minCoord[1] = (unsigned int)max(min(min(transformedLeftTop[1], transformedLeftBottom[1]), min(transformedRightTop[1], transformedRightBottom[1])), 0);
-	axisX[0] = transformedRightTop[0] - transformedLeftTop[0];
-	axisX[1] = transformedRightTop[1] - transformedLeftTop[1];
-	axisY[0] = transformedLeftBottom[0] - transformedLeftTop[0];
-	axisY[1] = transformedLeftBottom[1] - transformedLeftTop[1];
-	axisXLen = length2(axisX);
-	axisYLen = length2(axisY);
+	float area;
+	mulMat4Vec4(transformation, vertices[0].components, transformed[0]);
+	mulMat4Vec4(transformation, vertices[1].components, transformed[1]);
+	mulMat4Vec4(transformation, vertices[2].components, transformed[2]);
+	transformed[0][0] = roundf((transformed[0][0] / transformed[0][3]) * halfScreenSize[0] + halfScreenSize[0]);
+	transformed[0][1] = roundf((transformed[0][1] / transformed[0][3]) * halfScreenSize[1] + halfScreenSize[1]);
+	transformed[1][0] = roundf((transformed[1][0] / transformed[1][3]) * halfScreenSize[0] + halfScreenSize[0]);
+	transformed[1][1] = roundf((transformed[1][1] / transformed[1][3]) * halfScreenSize[1] + halfScreenSize[1]);
+	transformed[2][0] = roundf((transformed[2][0] / transformed[2][3]) * halfScreenSize[0] + halfScreenSize[0]);
+	transformed[2][1] = roundf((transformed[2][1] / transformed[2][3])  * halfScreenSize[1] + halfScreenSize[1]);
+	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), screenSize[0]), 0);
+	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), screenSize[1]), 0);
+	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
+	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
+	area = edgeFunction(transformed[0][0], transformed[0][1], transformed[1], transformed[2]);
+	// puts("AAA");
+	// printVec4(transformed[0]);
+	// printVec4(transformed[1]);
+	// printVec4(transformed[2]);
 	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
 		unsigned int x;
 		for(x = minCoord[0];x < maxCoord[0];x++) {
-			float vector[2] = { (int)x - transformedLeftTop[0], (int)y - transformedLeftTop[1] };
-			float dataCoords[2] = { dot2(vector, axisX) / (axisXLen * axisXLen), dot2(vector, axisY) / (axisYLen * axisYLen) };
-			if(dataCoords[0] >= 0.0F && dataCoords[0] < 1.0F && dataCoords[1] >= 0.0F && dataCoords[1] < 1.0F) {
-				unsigned char color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
+			float weights[3];
+			weights[0] = edgeFunction(x, y, transformed[1], transformed[2]);
+			weights[1] = edgeFunction(x, y, transformed[2], transformed[0]);
+			weights[2] = edgeFunction(x, y, transformed[0], transformed[1]);
+			if(weights[0] >= 0.0F && weights[1] >= 0.0F && weights[2] >= 0.0F) {
+				size_t index = (size_t)screenSize[0] * y + x;
+				float depth;
+				float dataCoords[2];
+				unsigned char color;
+				weights[0] /= area;
+				weights[1] /= area;
+				weights[2] /= area;
+				depth = transformed[0][2] * weights[0] + transformed[1][2] * weights[1] + transformed[2][2] * weights[2];
+				dataCoords[0] = vertices[0].texture[0] * weights[0] + vertices[1].texture[0] * weights[1] + vertices[2].texture[0] * weights[2];
+				dataCoords[1] =	vertices[0].texture[1] * weights[0] + vertices[1].texture[1] * weights[1] + vertices[2].texture[1] * weights[2];
+				color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
 				if(color != image.transparent) {
-					size_t index = (size_t)screenSize[0] * y + x;
-					if(shadow) {
-						if((buffer[index] >> 3) & 1) {
-							color = buffer[index] ^ 0x0E;
-						} else {
-							color = BLACK;
-						}
+					if(depth >= zBuffer[index]) {
+						buffer[index] = color;
+						zBuffer[index] = depth;
 					}
-					buffer[index] = color;
 				}
 			}
 		}
 	}
 }
 
-void fillTriangle(Vertex vertices[3], Image image) {
-	float transformed[3][4];
-	unsigned int maxCoord[2], minCoord[2];
-	float axisX[2], axisY[2];
-	float axisXLen, axisYLen;
-	mulMat4Vec4(transformation, vertices[0].components, transformed[0]);
-	mulMat4Vec4(transformation, vertices[1].components, transformed[1]);
-	mulMat4Vec4(transformation, vertices[2].components, transformed[2]);
-	transformed[0][0] = (transformed[0][0] / transformed[0][3]) * halfScreenSize[0] + halfScreenSize[0];
-	transformed[0][1] = (transformed[0][1] / transformed[0][3]) * halfScreenSize[1] + halfScreenSize[1];
-	transformed[1][0] = (transformed[1][0] / transformed[1][3]) * halfScreenSize[0] + halfScreenSize[0];
-	transformed[1][1] = (transformed[1][1] / transformed[1][3]) * halfScreenSize[1] + halfScreenSize[1];
-	transformed[2][0] = (transformed[2][0] / transformed[2][3]) * halfScreenSize[0] + halfScreenSize[0];
-	transformed[2][1] = (transformed[2][1] / transformed[2][3])  * halfScreenSize[1] + halfScreenSize[1];
-	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), screenSize[0]), 0);
-	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), screenSize[1]), 0);
-	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
-	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
-	axisX[0] = transformed[2][0] - transformed[0][0];
-	axisX[1] = transformed[2][1] - transformed[0][1];
-	axisY[0] = transformed[1][0] - transformed[0][0];
-	axisY[1] = transformed[1][1] - transformed[0][1];
-	axisXLen = length2(axisX);
-	axisYLen = length2(axisY);
-	unsigned int y;
-	for(y = minCoord[1];y < maxCoord[1];y++) {
-		unsigned int x;
-		for(x = minCoord[0];x < maxCoord[0];x++) {
-			float vector[2] = { (int)x - transformed[0][0], (int)y - transformed[0][1] };
-			float dataCoords[2] = { dot2(vector, axisX) / (axisXLen * axisXLen), dot2(vector, axisY) / (axisYLen * axisYLen) };
-			if(dataCoords[0] >= 0.0F && dataCoords[0] < 1.0F && dataCoords[1] >= 0.0F && dataCoords[1] < 1.0F) {
-				unsigned char color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
-				if(color != image.transparent) {
-					size_t index = (size_t)screenSize[0] * y + x;
-					buffer[index] = color;
-				}
-			}
-		}
+void fillPolygons(Vertex vertices[], unsigned long indices[], unsigned long nofIndex, Image image) {
+	unsigned long i;
+	for(i = 0;i < nofIndex;i += 3) {
+		Vertex triangle[3] = { vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]] };
+		fillTriangle(triangle, image);
 	}
 }
 
