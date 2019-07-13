@@ -18,6 +18,7 @@ float* addVec3(const float a[3], const float b[3], float out[3]);
 float* subVec2(const float a[2], const float b[2], float out[2]);
 float* subVec3(const float a[3], const float b[3], float out[3]);
 float* mulVec2ByScalar(const float vector[2], float scalar, float out[2]);
+float* mulVec4ByScalar(const float vector[4], float scalar, float out[4]);
 float* normalize2(const float vector[2], float out[2]);
 float* normalize3(const float vector[3], float out[3]);
 float* direction2(const float a[2], const float b[2], float out[2]);

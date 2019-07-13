@@ -87,6 +87,14 @@ float* mulVec2ByScalar(const float vector[2], float scalar, float out[2]) {
 	return out;
 }
 
+float* mulVec4ByScalar(const float vector[4], float scalar, float out[4]) {
+	out[0] = scalar * vector[0];
+	out[1] = scalar * vector[1];
+	out[2] = scalar * vector[2];
+	out[3] = scalar * vector[3];
+	return out;
+}
+
 float* normalize2(const float vector[2], float out[2]) {
 	float length = length2(vector);
 	if(length == 0.0F) {

@@ -115,34 +115,40 @@ static inline float edgeFunction(float x, float y, const float a[2], const float
 
 void fillTriangle(Vertex vertices[3], Image image) {
 	float transformed[3][4];
+	float textures[3][2];
 	unsigned int maxCoord[2], minCoord[2];
 	float area;
 	mulMat4Vec4(transformation, vertices[0].components, transformed[0]);
 	mulMat4Vec4(transformation, vertices[1].components, transformed[1]);
 	mulMat4Vec4(transformation, vertices[2].components, transformed[2]);
-	transformed[0][0] = roundf((transformed[0][0] / transformed[0][3]) * halfScreenSize[0] + halfScreenSize[0]);
-	transformed[0][1] = roundf((transformed[0][1] / transformed[0][3]) * halfScreenSize[1] + halfScreenSize[1]);
-	transformed[1][0] = roundf((transformed[1][0] / transformed[1][3]) * halfScreenSize[0] + halfScreenSize[0]);
-	transformed[1][1] = roundf((transformed[1][1] / transformed[1][3]) * halfScreenSize[1] + halfScreenSize[1]);
-	transformed[2][0] = roundf((transformed[2][0] / transformed[2][3]) * halfScreenSize[0] + halfScreenSize[0]);
-	transformed[2][1] = roundf((transformed[2][1] / transformed[2][3])  * halfScreenSize[1] + halfScreenSize[1]);
+	// mulVec4ByScalar(transformed[0], 1.0F / transformed[0][3], transformed[0]);
+	// mulVec4ByScalar(transformed[1], 1.0F / transformed[1][3], transformed[1]);
+	// mulVec4ByScalar(transformed[2], 1.0F / transformed[2][3], transformed[2]);
+	transformed[0][0] = roundf((transformed[0][0] / transformed[0][2]) * halfScreenSize[0] + halfScreenSize[0]);
+	transformed[0][1] = roundf((transformed[0][1] / transformed[0][2]) * halfScreenSize[1] + halfScreenSize[1]);
+	transformed[1][0] = roundf((transformed[1][0] / transformed[1][2]) * halfScreenSize[0] + halfScreenSize[0]);
+	transformed[1][1] = roundf((transformed[1][1] / transformed[1][2]) * halfScreenSize[1] + halfScreenSize[1]);
+	transformed[2][0] = roundf((transformed[2][0] / transformed[2][2]) * halfScreenSize[0] + halfScreenSize[0]);
+	transformed[2][1] = roundf((transformed[2][1] / transformed[2][2])  * halfScreenSize[1] + halfScreenSize[1]);
 	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), screenSize[0]), 0);
 	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), screenSize[1]), 0);
 	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
 	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
 	area = edgeFunction(transformed[0][0], transformed[0][1], transformed[1], transformed[2]);
-	// puts("AAA");
-	// printVec4(transformed[0]);
-	// printVec4(transformed[1]);
-	// printVec4(transformed[2]);
+	textures[0][0] = vertices[0].texture[0] / transformed[0][2];
+	textures[0][1] = vertices[0].texture[1] / transformed[0][2];
+	textures[1][0] = vertices[1].texture[0] / transformed[1][2];
+	textures[1][1] = vertices[1].texture[1] / transformed[1][2];
+	textures[2][0] = vertices[2].texture[0] / transformed[2][2];
+	textures[2][1] = vertices[2].texture[1] / transformed[2][2];
 	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
 		unsigned int x;
 		for(x = minCoord[0];x < maxCoord[0];x++) {
 			float weights[3];
-			weights[0] = edgeFunction(x, y, transformed[1], transformed[2]);
-			weights[1] = edgeFunction(x, y, transformed[2], transformed[0]);
-			weights[2] = edgeFunction(x, y, transformed[0], transformed[1]);
+			weights[0] = edgeFunction(x + 0.5F, y + 0.5F, transformed[1], transformed[2]);
+			weights[1] = edgeFunction(x + 0.5F, y + 0.5F, transformed[2], transformed[0]);
+			weights[2] = edgeFunction(x + 0.5F, y + 0.5F, transformed[0], transformed[1]);
 			if(weights[0] >= 0.0F && weights[1] >= 0.0F && weights[2] >= 0.0F) {
 				size_t index = (size_t)screenSize[0] * y + x;
 				float depth;
@@ -151,9 +157,9 @@ void fillTriangle(Vertex vertices[3], Image image) {
 				weights[0] /= area;
 				weights[1] /= area;
 				weights[2] /= area;
-				depth = transformed[0][2] * weights[0] + transformed[1][2] * weights[1] + transformed[2][2] * weights[2];
-				dataCoords[0] = vertices[0].texture[0] * weights[0] + vertices[1].texture[0] * weights[1] + vertices[2].texture[0] * weights[2];
-				dataCoords[1] =	vertices[0].texture[1] * weights[0] + vertices[1].texture[1] * weights[1] + vertices[2].texture[1] * weights[2];
+				depth = 1.0F / (1.0F / transformed[0][2] * weights[0] + 1.0F / transformed[1][2] * weights[1] + 1.0F / transformed[2][2] * weights[2]);
+				dataCoords[0] = depth * (textures[0][0] * weights[0] + textures[1][0] * weights[1] + textures[2][0] * weights[2]);
+				dataCoords[1] =	depth * (textures[0][1] * weights[0] + textures[1][1] * weights[1] + textures[2][1] * weights[2]);
 				color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
 				if(color != image.transparent) {
 					if(depth >= zBuffer[index]) {

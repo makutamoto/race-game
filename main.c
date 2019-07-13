@@ -97,7 +97,7 @@ static int bulletBehaviour(Sprite *sprite) {
 
 static int heroBehaviour(Sprite *sprite) {
 	float move[2];
-	addVec2(sprite->position, mulVec2ByScalar(controller.move, 0.75F, move), sprite->position);
+	addVec2(sprite->position, mulVec2ByScalar(controller.move, 1.0F, move), sprite->position);
 	sprite->position[0] = max(min(sprite->position[0], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
 	sprite->position[1] = max(min(sprite->position[1], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
 	sprite->angle[2] = angleVec2(controller.direction) + PI / 2.0F;
@@ -139,7 +139,7 @@ static void initialize(void) {
 	// push(&scene.interfaces, &lifeBarSprite);
 	push(&scene.objects, &heroSprite);
 	push(&scene.objects, &stageSprite);
-	spawnEnemy1(0.0F, -2000.0F);
+	// spawnEnemy1(0.0F, -2000.0F);
 }
 
 static BOOL pollEvents(void) {
@@ -155,7 +155,7 @@ static BOOL pollEvents(void) {
 				switch(keyEvent->wVirtualKeyCode) {
 					case 'Q': return FALSE;
 					case 'W':
-						controller.move[1] -= 1.0F;
+						controller.move[1] = -1.0F;
 						break;
 					case 'S':
 						controller.move[1] = 1.0F;
