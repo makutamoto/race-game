@@ -3,10 +3,11 @@
 
 #include<Windows.h>
 
+#include "./vector.h"
+
 typedef struct _Vertex {
 	float components[4];
 	unsigned char color;
-	float texture[2];
 } Vertex;
 
 typedef struct {
@@ -30,8 +31,8 @@ void translateTransformation(float dx, float dy, float dz);
 void scaleTransformation(float sx, float sy, float sz);
 void rotateTransformation(float rx, float ry, float rz);
 
-void fillTriangle(Vertex vertices[3], Image image);
-void fillPolygons(Vertex vertices[], unsigned long indices[], unsigned long nofIndex, Image image);
+void fillTriangle(Vertex vertices[3], Image image, float *uv[3]);
+void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices);
 
 Image loadBitmap(char *fileName, unsigned char transparent);
 Image genRect(unsigned int width, unsigned int height, unsigned char color);

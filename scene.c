@@ -14,9 +14,9 @@ Scene initScene(void) {
       .position = { 0.0F, 0.0F, 100.0F },
       .target = { 0.0F, 0.0F, 0.0F },
       .worldUp = { 0.0F, 1.0F, 0.0F },
-      .fov = PI / 2.0F,
-      .nearLimit = 0.01F,
-      .farLimit = 1000.0F,
+      .fov = PI / 3.0F * 2.0F,
+      .nearLimit = 10.0F,
+      .farLimit = 500.0F,
       .aspect = 1.0F,
     },
   };

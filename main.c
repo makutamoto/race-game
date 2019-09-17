@@ -118,21 +118,28 @@ static int heroBehaviour(Sprite *sprite) {
 static void initialize(void) {
 	window = GetConsoleWindow();
 	input = GetStdHandle(STD_INPUT_HANDLE);
-	initScreen(125, 125);
-	initGraphics(125, 125);
+	initScreen(200, 200);
+	initGraphics(200, 200);
 	lifeBar = genRect(5, 1, RED);
-	hero = loadBitmap("assets/hero.bmp", BLACK);
+	hero = loadBitmap("assets/hero3d.bmp", NULL_COLOR);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", BLACK);
-	stage = loadBitmap("assets/stage.bmp", BLACK);
+	stage = loadBitmap("assets/texture.bmp", NULL_COLOR);
 	scene = initScene();
 	scene.background = BLUE;
-	lifeBarSprite = initSprite("heroSprite", lifeBar);
+	// lifeBarSprite = initSprite("heroSprite", lifeBar);
 	stageSprite = initSprite("stage", stage);
+	// genPolygonsBox(100, 100, 100, &stageSprite.indices, &stageSprite.vertices, &stageSprite.uv, &stageSprite.uvIndices);
+	readObj("./assets/test.obj", &stageSprite.indices, &stageSprite.vertices, &stageSprite.uv, &stageSprite.uvIndices);
 	stageSprite.position[2] = 10.0;
 	// lifeBarSprite.position[0] = 0.01;
 	// lifeBarSprite.position[1] = 0.01;
 	heroSprite = initSprite("Hero", hero);
+	genPolygonsPlane(32, 32, &heroSprite.indices, &heroSprite.vertices, &heroSprite.uv, &heroSprite.uvIndices);
+	readObj("./assets/hero.obj", &heroSprite.indices, &heroSprite.vertices, &heroSprite.uv, &heroSprite.uvIndices);
+	heroSprite.scale[0] = 32.0F;
+	heroSprite.scale[1] = 32.0F;
+	heroSprite.scale[2] = 32.0F;
 	heroSprite.shadowScale = 0.75;
 	heroSprite.shadowOffset[1] = 10.0;
 	heroSprite.behaviour = heroBehaviour;
@@ -213,6 +220,9 @@ static BOOL pollEvents(void) {
 }
 
 static void deinitialize(void) {
+	discardSprite(lifeBarSprite);
+	discardSprite(heroSprite);
+	discardSprite(stageSprite);
 	freeImage(lifeBar);
 	freeImage(hero);
 	freeImage(heroBullet);

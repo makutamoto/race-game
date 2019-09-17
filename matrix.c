@@ -3,14 +3,6 @@
 
 #include "./include/matrix.h"
 
-float (*copyMat4(float src[4][4], float dest[4][4]))[4] {
-	int row, col;
-	for(row = 0;row < 4;row++) {
-		for(col = 0;col < 4;col++) dest[row][col] = src[row][col];
-	}
-	return dest; // Use memcpy;
-}
-
 float dot2(const float a[2], const float b[2]) {
 	return a[0] * b[0] + a[1] * b[1];
 }
@@ -199,6 +191,26 @@ float* mulMat4Vec4(const float mat[4][4], const float vec[4], float out[4]) {
 	out[1] = dot4(mat[1], vec);
 	out[2] = dot4(mat[2], vec);
 	out[3] = dot4(mat[3], vec);
+	if(out[3] != 1.0F) {
+		out[0] /= out[3];
+		out[1] /= out[3];
+		out[2] /= out[3];
+		out[3] = 1.0F;
+	}
+	return out;
+}
+
+float* mulMat4Vec4Proj(const float mat[4][4], const float vec[4], float out[4]) {
+	out[0] = dot4(mat[0], vec);
+	out[1] = dot4(mat[1], vec);
+	out[2] = dot4(mat[2], vec);
+	out[3] = dot4(mat[3], vec);
+	if(out[3] != 1.0F) {
+		out[0] /= out[3];
+		out[1] /= out[3];
+		out[2] /= out[3];
+		out[3] = 1.0F / out[3];
+	}
 	return out;
 }
 
@@ -212,6 +224,26 @@ float (*transposeMat3(const float mat[3][3], float out[3][3]))[3] {
 	out[0][2] = mat[2][0];
 	out[1][2] = mat[2][1];
 	out[2][2] = mat[2][2];
+	return out;
+}
+
+float (*transposeMat4(const float mat[4][4], float out[4][4]))[4] {
+	out[0][0] = mat[0][0];
+	out[1][0] = mat[0][1];
+	out[2][0] = mat[0][2];
+	out[3][0] = mat[0][3];
+	out[0][1] = mat[1][0];
+	out[1][1] = mat[1][1];
+	out[2][1] = mat[1][2];
+	out[3][1] = mat[1][3];
+	out[0][2] = mat[2][0];
+	out[1][2] = mat[2][1];
+	out[2][2] = mat[2][2];
+	out[3][2] = mat[2][3];
+	out[0][3] = mat[3][0];
+	out[1][3] = mat[3][1];
+	out[2][3] = mat[3][2];
+	out[3][3] = mat[3][3];
 	return out;
 }
 
@@ -427,20 +459,21 @@ float (*genLookAtMat4(float position[3], float target[3], float worldUp[3], floa
 	return mulMat4(look, move, mat);
 }
 
-float (*genPerspectiveMat4(float fov, float near, float far, float aspect, float mat[4][4]))[4] {
-	float widthHalf = near * tanf(fov / 2.0F);
-	mat[0][0] = near / widthHalf;
+float (*genPerspectiveMat4(float fovY, float zNear, float zFar, float aspect, float mat[4][4]))[4] {
+	float top = zNear * tanf(fovY / 2.0F);
+	float right = top * aspect;
+	mat[0][0] = zNear / right;
 	mat[0][1] = 0.0F;
 	mat[0][2] = 0.0F;
 	mat[0][3] = 0.0F;
 	mat[1][0] = 0.0F;
-	mat[1][1] = near / (widthHalf / aspect);
+	mat[1][1] = zNear / top;
 	mat[1][2] = 0.0F;
 	mat[1][3] = 0.0F;
 	mat[2][0] = 0.0F;
 	mat[2][1] = 0.0F;
-	mat[2][2] = - (far + near) / (far - near);
-	mat[2][3] = -2.0F * far * near / (far - near);
+	mat[2][2] = - (zFar + zNear) / (zFar - zNear);
+	mat[2][3] = -2.0F * zFar * zNear / (zFar - zNear);
 	mat[3][0] = 0.0F;
 	mat[3][1] = 0.0F;
 	mat[3][2] = -1.0F;

@@ -49,7 +49,7 @@ void clearBuffer(unsigned char color) {
 
 void clearZBuffer(void) {
 	unsigned long i;
-	for(i = 0;i < bufferLength;i++) zBuffer[i] = -FLT_MAX;
+	for(i = 0;i < bufferLength;i++) zBuffer[i] = FLT_MAX;
 }
 
 void flushBuffer(HANDLE screen) {
@@ -113,34 +113,34 @@ static inline float edgeFunction(float x, float y, const float a[2], const float
 	return (a[0] - b[0]) * (y - a[1]) - (a[1] - b[1]) * (x - a[0]);
 }
 
-void fillTriangle(Vertex vertices[3], Image image) {
+void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
 	float transformed[3][4];
 	float textures[3][2];
 	unsigned int maxCoord[2], minCoord[2];
 	float area;
-	mulMat4Vec4(transformation, vertices[0].components, transformed[0]);
-	mulMat4Vec4(transformation, vertices[1].components, transformed[1]);
-	mulMat4Vec4(transformation, vertices[2].components, transformed[2]);
-	// mulVec4ByScalar(transformed[0], 1.0F / transformed[0][3], transformed[0]);
-	// mulVec4ByScalar(transformed[1], 1.0F / transformed[1][3], transformed[1]);
-	// mulVec4ByScalar(transformed[2], 1.0F / transformed[2][3], transformed[2]);
-	transformed[0][0] = roundf((transformed[0][0] / transformed[0][2]) * halfScreenSize[0] + halfScreenSize[0]);
-	transformed[0][1] = roundf((transformed[0][1] / transformed[0][2]) * halfScreenSize[1] + halfScreenSize[1]);
-	transformed[1][0] = roundf((transformed[1][0] / transformed[1][2]) * halfScreenSize[0] + halfScreenSize[0]);
-	transformed[1][1] = roundf((transformed[1][1] / transformed[1][2]) * halfScreenSize[1] + halfScreenSize[1]);
-	transformed[2][0] = roundf((transformed[2][0] / transformed[2][2]) * halfScreenSize[0] + halfScreenSize[0]);
-	transformed[2][1] = roundf((transformed[2][1] / transformed[2][2])  * halfScreenSize[1] + halfScreenSize[1]);
+	float aspect = (float)screenSize[0] / screenSize[1];
+	mulMat4Vec4Proj(transformation, vertices[0].components, transformed[0]);
+	mulMat4Vec4Proj(transformation, vertices[1].components, transformed[1]);
+	mulMat4Vec4Proj(transformation, vertices[2].components, transformed[2]);
+	if(transformed[0][2] < 0.0F || transformed[1][2] < 0.0F || transformed[2][2] < 0.0F) return;
+	if(transformed[0][2] > 1.0F || transformed[1][2] > 1.0F || transformed[2][2] > 1.0F) return;
+	transformed[0][0] = roundf(transformed[0][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
+	transformed[0][1] = roundf(transformed[0][1] * halfScreenSize[1] + halfScreenSize[1]);
+	transformed[1][0] = roundf(transformed[1][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
+	transformed[1][1] = roundf(transformed[1][1] * halfScreenSize[1] + halfScreenSize[1]);
+	transformed[2][0] = roundf(transformed[2][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
+	transformed[2][1] = roundf(transformed[2][1]  * halfScreenSize[1] + halfScreenSize[1]);
 	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), screenSize[0]), 0);
 	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), screenSize[1]), 0);
 	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
 	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
 	area = edgeFunction(transformed[0][0], transformed[0][1], transformed[1], transformed[2]);
-	textures[0][0] = vertices[0].texture[0] / transformed[0][2];
-	textures[0][1] = vertices[0].texture[1] / transformed[0][2];
-	textures[1][0] = vertices[1].texture[0] / transformed[1][2];
-	textures[1][1] = vertices[1].texture[1] / transformed[1][2];
-	textures[2][0] = vertices[2].texture[0] / transformed[2][2];
-	textures[2][1] = vertices[2].texture[1] / transformed[2][2];
+	textures[0][0] = uv[0][0] * transformed[0][3];
+	textures[0][1] = uv[0][1] * transformed[0][3];
+	textures[1][0] = uv[1][0] * transformed[1][3];
+	textures[1][1] = uv[1][1] * transformed[1][3];
+	textures[2][0] = uv[2][0] * transformed[2][3];
+	textures[2][1] = uv[2][1] * transformed[2][3];
 	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
 		unsigned int x;
@@ -157,12 +157,12 @@ void fillTriangle(Vertex vertices[3], Image image) {
 				weights[0] /= area;
 				weights[1] /= area;
 				weights[2] /= area;
-				depth = 1.0F / (1.0F / transformed[0][2] * weights[0] + 1.0F / transformed[1][2] * weights[1] + 1.0F / transformed[2][2] * weights[2]);
+				depth = 1.0F / (transformed[0][3] * weights[0] + transformed[1][3] * weights[1] + transformed[2][3] * weights[2]);
 				dataCoords[0] = depth * (textures[0][0] * weights[0] + textures[1][0] * weights[1] + textures[2][0] * weights[2]);
 				dataCoords[1] =	depth * (textures[0][1] * weights[0] + textures[1][1] * weights[1] + textures[2][1] * weights[2]);
 				color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
 				if(color != image.transparent) {
-					if(depth >= zBuffer[index]) {
+					if(depth < zBuffer[index]) {
 						buffer[index] = color;
 						zBuffer[index] = depth;
 					}
@@ -172,11 +172,30 @@ void fillTriangle(Vertex vertices[3], Image image) {
 	}
 }
 
-void fillPolygons(Vertex vertices[], unsigned long indices[], unsigned long nofIndex, Image image) {
+void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices) {
 	unsigned long i;
-	for(i = 0;i < nofIndex;i += 3) {
-		Vertex triangle[3] = { vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]] };
-		fillTriangle(triangle, image);
+	static float defaultUV[2] = { 0.0F, 0.0F };
+	resetIteration(&indices);
+	resetIteration(&uvIndices);
+	for(i = 0;i < indices.length / 3;i++) {
+		unsigned long index[3], uvIndex[3];
+		Vertex triangle[3];
+		float *triangleUV[3] = { defaultUV, defaultUV, defaultUV };
+		index[0] = *(unsigned long*)nextData(&indices);
+		index[1] = *(unsigned long*)nextData(&indices);
+		index[2] = *(unsigned long*)nextData(&indices);
+		uvIndex[0] = *(unsigned long*)nextData(&uvIndices);
+		uvIndex[1] = *(unsigned long*)nextData(&uvIndices);
+		uvIndex[2] = *(unsigned long*)nextData(&uvIndices);
+		triangle[0] = *(Vertex*)dataAt(vertices, index[0]);
+		triangle[1] = *(Vertex*)dataAt(vertices, index[1]);
+		triangle[2] = *(Vertex*)dataAt(vertices, index[2]);
+		if(uv.length != 0) {
+			triangleUV[0] = (float*)dataAt(uv, uvIndex[0]);
+			triangleUV[1] = (float*)dataAt(uv, uvIndex[1]);
+			triangleUV[2] = (float*)dataAt(uv, uvIndex[2]);
+		}
+		fillTriangle(triangle, image, triangleUV);
 	}
 }
 
@@ -188,39 +207,48 @@ Image loadBitmap(char *fileName, unsigned char transparent) {
 	uint32_t *img;
 	if(fopen_s(&file, fileName, "rb")) {
 		fprintf(stderr, "Failed to open the file '%s'\n", fileName);
+		fclose(file);
 		return image;
 	}
 	if(fread_s(&header, sizeof(BitmapHeader), 1, sizeof(BitmapHeader), file) != sizeof(BitmapHeader)) {
 		fprintf(stderr, "BMP header does not exist in the file '%s'\n", fileName);
+		fclose(file);
 		return image;
 	}
 	if(header.magicNumber[0] != 'B' || header.magicNumber[1] != 'M') {
 		fprintf(stderr, "Unknown magic number.\n");
+		fclose(file);
 		return image;
 	}
 	if(header.dibSize != 40) {
 		fprintf(stderr, "Unknown DIB header type.\n");
+		fclose(file);
 		return  image;
 	}
 	if(fread_s(&infoHeader, sizeof(BitmapInfoHeader), 1, sizeof(BitmapInfoHeader), file) != sizeof(BitmapInfoHeader)) {
 		fprintf(stderr, "Failed to load Bitmap info header.\n");
+		fclose(file);
 		return image;
 	}
 	if(infoHeader.width < 0 || infoHeader.height < 0) {
 		fprintf(stderr, "Negative demensions are not supported.\n");
+		fclose(file);
 		return image;
 	}
 	if(infoHeader.compressionMethod != 0) {
 		fprintf(stderr, "Compressions are not supported.\n");
+		fclose(file);
 		return image;
 	}
 	if(fseek(file, (long)header.offset, SEEK_SET)) {
 		fprintf(stderr, "Image data does not exist.\n");
+		fclose(file);
 		return image;
 	}
 	img = (uint32_t*)malloc(infoHeader.imageSize);
 	if(fread_s(img, infoHeader.imageSize, 1, infoHeader.imageSize, file) != infoHeader.imageSize) {
 		fprintf(stderr, "Image data is corrupted.\n");
+		fclose(file);
 		return image;
 	}
 	image.width = (unsigned int)infoHeader.width;
