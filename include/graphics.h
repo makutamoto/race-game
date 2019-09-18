@@ -26,10 +26,13 @@ void flushBuffer(HANDLE screen);
 void pushTransformation(void);
 void popTransformation(void);
 void clearTransformation(void);
-void mulTransformationL(float a[4][4]);
+void setCameraMat4(float mat[4][4]);
 void translateTransformation(float dx, float dy, float dz);
 void scaleTransformation(float sx, float sy, float sz);
 void rotateTransformation(float rx, float ry, float rz);
+
+void clearAABB(void);
+float (*getAABB(float out[3][2]))[2];
 
 void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]);
 void fillPolygons(Vector vertices, Vector indices, Image *image, Vector uv, Vector uvIndices);

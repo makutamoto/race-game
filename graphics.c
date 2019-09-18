@@ -19,9 +19,13 @@ static unsigned int screenSize[2];
 static unsigned long screenLength;
 static unsigned int halfScreenSize[2];
 
+static float camera[4][4];
 static float transformation[4][4];
 static Vector matrixStore;
 static unsigned int currentStore = 0;
+
+int aabbClear = TRUE;
+static float aabbTemp[3][2];
 
 void initGraphics(unsigned int width, unsigned int height) {
 	bufferSize[0] = 2 * width;
@@ -85,10 +89,8 @@ void clearTransformation(void) {
 	genIdentityMat4(transformation);
 }
 
-void mulTransformationL(float mat[4][4]) {
-	float temp[4][4];
-	memcpy_s(temp, sizeof(temp), transformation, sizeof(transformation));
-	mulMat4(mat, temp, transformation);
+void setCameraMat4(float mat[4][4]) {
+	memcpy_s(camera, sizeof(camera), mat, sizeof(camera));
 }
 
 void translateTransformation(float dx, float dy, float dz) {
@@ -109,20 +111,66 @@ void rotateTransformation(float rx, float ry, float rz) {
 	mulMat4(temp2, genRotationMat4(rx, ry, rz, temp1), transformation);
 }
 
+void clearAABB(void) {
+	aabbClear = TRUE;
+}
+
+float (*getAABB(float out[3][2]))[2] {
+	out[0][0] = aabbTemp[0][0];
+	out[0][1] = aabbTemp[0][1];
+	out[1][0] = aabbTemp[1][0];
+	out[1][1] = aabbTemp[1][1];
+	out[2][0] = aabbTemp[2][0];
+	out[2][1] = aabbTemp[2][1];
+
+	return out;
+}
+
 static inline float edgeFunction(float x, float y, const float a[2], const float b[2]) {
 	return (a[0] - b[0]) * (y - a[1]) - (a[1] - b[1]) * (x - a[0]);
 }
 
 void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]) {
-	float transformed[3][4];
+	float transformed[3][4], transformedTemp[3][4];
 	float textures[3][2];
 	float vertexColors[3];
 	unsigned int maxCoord[2], minCoord[2];
 	float area;
 	float aspect = (float)screenSize[0] / screenSize[1];
-	mulMat4Vec4Proj(transformation, vertices[0].components, transformed[0]);
-	mulMat4Vec4Proj(transformation, vertices[1].components, transformed[1]);
-	mulMat4Vec4Proj(transformation, vertices[2].components, transformed[2]);
+	mulMat4Vec4(transformation, vertices[0].components, transformedTemp[0]);
+	mulMat4Vec4(transformation, vertices[1].components, transformedTemp[1]);
+	mulMat4Vec4(transformation, vertices[2].components, transformedTemp[2]);
+	if(aabbClear) {
+		aabbTemp[0][0] = transformedTemp[0][0];
+		aabbTemp[0][1] = transformedTemp[0][0];
+		aabbTemp[1][0] = transformedTemp[0][1];
+		aabbTemp[1][1] = transformedTemp[0][1];
+		aabbTemp[2][0] = transformedTemp[0][2];
+		aabbTemp[2][1] = transformedTemp[0][2];
+		aabbClear = FALSE;
+	} else {
+		if(aabbTemp[0][0] > transformedTemp[0][0]) aabbTemp[0][0] = transformedTemp[0][0];
+		if(aabbTemp[0][1] < transformedTemp[0][0]) aabbTemp[0][1] = transformedTemp[0][0];
+		if(aabbTemp[1][0] > transformedTemp[0][1]) aabbTemp[1][0] = transformedTemp[0][1];
+		if(aabbTemp[1][1] < transformedTemp[0][1]) aabbTemp[1][1] = transformedTemp[0][1];
+		if(aabbTemp[2][0] > transformedTemp[0][2]) aabbTemp[2][0] = transformedTemp[0][2];
+		if(aabbTemp[2][1] < transformedTemp[0][2]) aabbTemp[2][1] = transformedTemp[0][2];
+ 	}
+	if(aabbTemp[0][0] > transformedTemp[1][0]) aabbTemp[0][0] = transformedTemp[1][0];
+	if(aabbTemp[0][1] < transformedTemp[1][0]) aabbTemp[0][1] = transformedTemp[1][0];
+	if(aabbTemp[1][0] > transformedTemp[1][1]) aabbTemp[1][0] = transformedTemp[1][1];
+	if(aabbTemp[1][1] < transformedTemp[1][1]) aabbTemp[1][1] = transformedTemp[1][1];
+	if(aabbTemp[2][0] > transformedTemp[1][2]) aabbTemp[2][0] = transformedTemp[1][2];
+	if(aabbTemp[2][1] < transformedTemp[1][2]) aabbTemp[2][1] = transformedTemp[1][2];
+	if(aabbTemp[0][0] > transformedTemp[2][0]) aabbTemp[0][0] = transformedTemp[2][0];
+	if(aabbTemp[0][1] < transformedTemp[2][0]) aabbTemp[0][1] = transformedTemp[2][0];
+	if(aabbTemp[1][0] > transformedTemp[2][1]) aabbTemp[1][0] = transformedTemp[2][1];
+	if(aabbTemp[1][1] < transformedTemp[2][1]) aabbTemp[1][1] = transformedTemp[2][1];
+	if(aabbTemp[2][0] > transformedTemp[2][2]) aabbTemp[2][0] = transformedTemp[2][2];
+	if(aabbTemp[2][1] < transformedTemp[2][2]) aabbTemp[2][1] = transformedTemp[2][2];
+	mulMat4Vec4Proj(camera, transformedTemp[0], transformed[0]);
+	mulMat4Vec4Proj(camera, transformedTemp[1], transformed[1]);
+	mulMat4Vec4Proj(camera, transformedTemp[2], transformed[2]);
 	if(transformed[0][2] < 0.0F || transformed[1][2] < 0.0F || transformed[2][2] < 0.0F) return;
 	if(transformed[0][2] > 1.0F || transformed[1][2] > 1.0F || transformed[2][2] > 1.0F) return;
 	transformed[0][0] = roundf(transformed[0][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);

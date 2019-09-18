@@ -11,7 +11,7 @@ Scene initScene(void) {
     .objects = initVector(),
     .interfaces = initVector(),
     .camera = {
-      .position = { 0.0F, 0.0F, 100.0F },
+      .position = { 0.0F, -100.0F, -100.0F },
       .target = { 0.0F, 0.0F, 0.0F },
       .worldUp = { 0.0F, 1.0F, 0.0F },
       .fov = PI / 3.0F * 2.0F,
@@ -32,22 +32,27 @@ void drawScene(Scene *scene, HANDLE screen) {
   genLookAtMat4(scene->camera.position, scene->camera.target, scene->camera.worldUp, lookAt);
   genPerspectiveMat4(scene->camera.fov, scene->camera.nearLimit, scene->camera.farLimit, scene->camera.aspect, projection);
   mulMat4(projection, lookAt, camera);
-  mulTransformationL(camera);
+  setCameraMat4(camera);
   clearBuffer(scene->background);
   clearZBuffer();
   resetIteration(&scene->objects);
 
   while((sprite = previousData(&scene->objects))) {
-    // Sprite *collisionTarget;
-    // VectorItem *item = scene->children.currentItem;
-    // while((collisionTarget = (Sprite*)previousData(&scene->children))) {
-    //   int distance = distance2(sprite->position, collisionTarget->position);
-    //   if(distance - sprite->collisionRadius - collisionTarget->collisionRadius < 0) {
-    //     sprite->collisionTarget = collisionTarget;
-    //     collisionTarget->collisionTarget = sprite;
-    //   }
-    // }
-    // scene->children.currentItem = item;
+    addVec3(sprite->position, sprite->velocity, sprite->position);
+    clearVector(&sprite->collisionTargets);
+    if(sprite->collisionMask) {
+      Sprite *collisionTarget;
+      VectorItem *item = scene->objects.currentItem;
+      while((collisionTarget = (Sprite*)previousData(&scene->objects))) {
+        if(sprite->collisionMask & collisionTarget->collisionMask) {
+          if(testCollision(*sprite, *collisionTarget)) {
+            push(&sprite->collisionTargets, collisionTarget);
+            push(&collisionTarget->collisionTargets, sprite);
+          }
+        }
+      }
+      scene->objects.currentItem = item;
+    }
     drawSprite(sprite);
   }
   clearTransformation();

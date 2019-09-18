@@ -1,12 +1,14 @@
 #include<stdio.h>
 #include<Windows.h>
 
+#include<time.h>
+
 #include "./include/sprite.h"
 #include "./include/graphics.h"
 #include "./include/vector.h"
 
 #define OBJ_LINE_BUFFER_SIZE 128
-#define OBJ_WORD_BUFFER_SIZE 16
+#define OBJ_WORD_BUFFER_SIZE 32
 
 Sprite initSprite(const char *id, Image *image) {
   Sprite sprite = {};
@@ -21,60 +23,79 @@ Sprite initSprite(const char *id, Image *image) {
 }
 
 void discardSprite(Sprite sprite) {
-  freeVector(&sprite.indices);
-  freeVector(&sprite.vertices);
-  freeVector(&sprite.uv);
-  freeVector(&sprite.uvIndices);
   freeVector(&sprite.children);
 }
 
 void drawSprite(Sprite *sprite) {
   Sprite *child;
+  IntervalEvent *interval;
 
   if(sprite->behaviour != NULL) {
     if(!sprite->behaviour(sprite)) return;
   }
+  resetIteration(&sprite->intervalEvents);
+  while((interval = nextData(&sprite->intervalEvents))) {
+    clock_t current = clock();
+    clock_t diff = current - interval->begin;
+    if(diff < 0) {
+      interval->begin = current;
+    } else {
+      if(interval->interval < diff) {
+        interval->begin = current;
+        if(!interval->callback(sprite)) return;
+      }
+    }
+  }
 	pushTransformation();
   translateTransformation(sprite->position[0], sprite->position[1], sprite->position[2]);
   rotateTransformation(sprite->angle[0], sprite->angle[1], sprite->angle[2]);
-	// pushTransformation();
-  // translateTransformation(sprite->shadowOffset[0], sprite->shadowOffset[1], 0.0);
-	// scaleTransformation(sprite->shadowScale, sprite->shadowScale, 1.0);
-	// if(sprite->shadowOffset[0] != 0.0F || sprite->shadowOffset[1] != 0.0F) fillBuffer(sprite->texture, TRUE);
-	// popTransformation();
   resetIteration(&sprite->children);
   while((child = previousData(&sprite->children))) drawSprite(child);
   scaleTransformation(sprite->scale[0], sprite->scale[1], sprite->scale[2]);
-	fillPolygons(sprite->vertices, sprite->indices, sprite->texture, sprite->uv, sprite->uvIndices);
-	popTransformation();
+  clearAABB();
+	fillPolygons(sprite->shape.vertices, sprite->shape.indices, sprite->texture, sprite->shape.uv, sprite->shape.uvIndices);
+  getAABB(sprite->aabb);
+  popTransformation();
 }
 
-void genPolygonsPlane(unsigned int width, unsigned int height, Sprite *sprite, unsigned char color) {
+int testCollision(Sprite a, Sprite b) {
+  return (a.aabb[0][0] <= b.aabb[0][1] && a.aabb[0][1] >= b.aabb[0][0]) &&
+         (a.aabb[1][0] <= b.aabb[1][1] && a.aabb[1][1] >= b.aabb[1][0]) &&
+         (a.aabb[2][0] <= b.aabb[2][1] && a.aabb[2][1] >= b.aabb[2][0]);
+}
+
+void addIntervalEvent(Sprite *sprite, unsigned int milliseconds, int (*callback)(Sprite*)) {
+  IntervalEvent *interval = malloc(sizeof(IntervalEvent));
+  interval->begin = clock();
+  interval->interval = milliseconds * CLOCKS_PER_SEC / 1000;
+  interval->callback = callback;
+  push(&sprite->intervalEvents, interval);
+}
+
+Shape initShapePlane(unsigned int width, unsigned int height, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
-  sprite->indices = initVector();
-  sprite->vertices = initVector();
-  sprite->uv = initVector();
-  sprite->uvIndices = initVector();
+  Shape shape = {
+    initVector(), initVector(), initVector(), initVector()
+  };
   static unsigned long generated_indices[] = { 0, 1, 2, 1, 3, 2 };
   Vertex generated_vertices[] = {
     { { -halfWidth, -halfHeight, 0.0F, 1.0F }, color },
-    { { -halfWidth, halfHeight, 0.0F, 1.0F }, color },
     { { halfWidth, -halfHeight, 0.0F, 1.0F }, color },
+    { { -halfWidth, halfHeight, 0.0F, 1.0F }, color },
     { { halfWidth, halfHeight, 0.0F, 1.0F }, color },
   };
   float generated_uv[][2] = {
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
   };
-  static unsigned long generated_uvIndices[] = { 0, 1, 2, 1, 3, 2 };
   for(i = 0;i < 6;i++) {
     unsigned long *index = malloc(sizeof(unsigned long));
     unsigned long *uvIndex = malloc(sizeof(unsigned long));
     *index = generated_indices[i];
-    *uvIndex = generated_uvIndices[i];
-    push(&sprite->indices, index);
-    push(&sprite->uvIndices, uvIndex);
+    *uvIndex = generated_indices[i];
+    push(&shape.indices, index);
+    push(&shape.uvIndices, uvIndex);
   }
   for(i = 0;i < 4;i++) {
     Vertex *vertex = malloc(sizeof(Vertex));
@@ -82,27 +103,24 @@ void genPolygonsPlane(unsigned int width, unsigned int height, Sprite *sprite, u
     *vertex = generated_vertices[i];
     coords[0] = generated_uv[i][0];
     coords[1] = generated_uv[i][1];
-    push(&sprite->vertices, vertex);
-    push(&sprite->uv, coords);
+    push(&shape.vertices, vertex);
+    push(&shape.uv, coords);
   }
+  return shape;
 }
 
-void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth, Sprite *sprite, unsigned char color) {
+Shape initShapeBox(unsigned int width, unsigned int height, unsigned int depth, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
   float halfDepth = depth / 2.0F;
-  sprite->indices = initVector();
-  sprite->vertices = initVector();
-  sprite->uv = initVector();
-  sprite->uvIndices = initVector();
+  Shape shape = {
+    initVector(), initVector(), initVector(), initVector()
+  };
   static unsigned long generated_indices[] = {
-    0, 1, 2, 1, 3, 2,
-    4, 5, 6, 5, 7, 6,
-    8, 9, 10, 9, 11, 10,
-    12, 13, 14, 13, 15, 14,
-    16, 17, 18, 17, 19, 18,
-    20, 21, 22, 21, 23, 22,
+    0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6,
+    8, 9, 10, 9, 11, 10, 12, 13, 14, 13, 15, 14,
+    16, 17, 18, 17, 19, 18, 20, 21, 22, 21, 23, 22,
   };
   Vertex generated_vertices[] = {
     { { -halfWidth, -halfHeight, halfDepth, 1.0F }, color },
@@ -143,21 +161,13 @@ void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth,
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
     { 0.0F, 0.0F }, { 1.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 1.0F },
   };
-  static unsigned long generated_uvIndices[] = {
-    0, 1, 2, 1, 3, 2,
-    4, 5, 6, 5, 7, 6,
-    8, 9, 10, 9, 11, 10,
-    12, 13, 14, 13, 15, 14,
-    16, 17, 18, 17, 19, 18,
-    20, 21, 22, 21, 23, 22,
-  };
   for(i = 0;i < 36;i++) {
     unsigned long *index = malloc(sizeof(unsigned long));
     unsigned long *uvIndex = malloc(sizeof(unsigned long));
     *index = generated_indices[i];
-    *uvIndex = generated_uvIndices[i];
-    push(&sprite->indices, index);
-    push(&sprite->uvIndices, uvIndex);
+    *uvIndex = generated_indices[i];
+    push(&shape.indices, index);
+    push(&shape.uvIndices, uvIndex);
   }
   for(i = 0;i < 24;i++) {
     Vertex *vertex = malloc(sizeof(Vertex));
@@ -165,9 +175,10 @@ void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth,
     *vertex = generated_vertices[i];
     coords[0] = generated_uv[i][0];
     coords[1] = generated_uv[i][1];
-    push(&sprite->vertices, vertex);
-    push(&sprite->uv, coords);
+    push(&shape.vertices, vertex);
+    push(&shape.uv, coords);
   }
+  return shape;
 }
 
 size_t getUntil(char *string, char separator, size_t index, char *out, size_t out_size) {
@@ -192,19 +203,19 @@ size_t getUntil(char *string, char separator, size_t index, char *out, size_t ou
   return index + 1;
 }
 
-void readObj(char *filename, Sprite *sprite) {
+int initShapeFromObj(Shape *shape, char *filename) {
   FILE *file;
   char buffer[OBJ_LINE_BUFFER_SIZE];
   char temp[OBJ_WORD_BUFFER_SIZE];
   size_t line = 1;
-  sprite->vertices = initVector();
-  sprite->indices = initVector();
-  sprite->uv = initVector();
-  sprite->uvIndices = initVector();
+  shape->indices = initVector();
+  shape->vertices = initVector();
+  shape->uv = initVector();
+  shape->uvIndices = initVector();
   if(fopen_s(&file, filename, "r")) {
     fputs("File not found.", stderr);
     fclose(file);
-    return;
+    return -1;
   }
   while(fgets(buffer, OBJ_LINE_BUFFER_SIZE, file)) {
     int i;
@@ -216,7 +227,7 @@ void readObj(char *filename, Sprite *sprite) {
       if(vertex == NULL) {
         fputs("readObj: Memory allocation failed.", stderr);
         fclose(file);
-        return;
+        return -2;
       }
       for(i = 0;i < 4;i++) {
         old_index = index;
@@ -227,19 +238,19 @@ void readObj(char *filename, Sprite *sprite) {
           } else {
             fprintf(stderr, "readObj: Vertex component %d does not found. (%zu, %zu)", i, line, old_index);
             fclose(file);
-            return;
+            return -3;
           }
         } else {
           vertex->components[i] = (float)atof(temp);
         }
       }
-      push(&sprite->vertices, vertex);
+      push(&shape->vertices, vertex);
     } else if(strcmp(temp, "vt") == 0) {
       float *coords = malloc(2 * sizeof(float));
       if(coords == NULL) {
         fputs("readObj: Memory allocation failed.", stderr);
         fclose(file);
-        return;
+        return -4;
       }
       for(i = 0;i < 2;i++) {
         old_index = index;
@@ -250,7 +261,7 @@ void readObj(char *filename, Sprite *sprite) {
           } else {
             fprintf(stderr, "readObj: Terxture cordinates' component %d does not found. (%zu, %zu)", i, line, old_index);
             fclose(file);
-            return;
+            return -5;
           }
         } else {
           if(i == 1) {
@@ -260,7 +271,7 @@ void readObj(char *filename, Sprite *sprite) {
           }
         }
       }
-      push(&sprite->uv, coords);
+      push(&shape->uv, coords);
     } else if(strcmp(temp, "f") == 0) {
       unsigned long faceIndices[3];
       unsigned long faceUVIndices[3];
@@ -270,14 +281,14 @@ void readObj(char *filename, Sprite *sprite) {
         if(temp[0] == '\0') {
           fprintf(stderr, "readObj: Vertex component %d does not found. (%zu, %zu)", i, line, old_index);
           fclose(file);
-          return;
+          return -6;
         } else {
           size_t index2 = 0;
           char temp2[OBJ_WORD_BUFFER_SIZE];
           index2 = getUntil(temp, '/', index2, temp2, OBJ_WORD_BUFFER_SIZE);
           faceIndices[i] = atoi(temp2);
           if(faceIndices[i] < 0) {
-            faceIndices[i] += sprite->vertices.length;
+            faceIndices[i] += shape->vertices.length;
           } else {
             faceIndices[i] -= 1;
           }
@@ -287,7 +298,7 @@ void readObj(char *filename, Sprite *sprite) {
           } else {
             faceUVIndices[i] = atoi(temp2);
             if(faceUVIndices[i] < 0) {
-              faceUVIndices[i] += sprite->uv.length;
+              faceUVIndices[i] += shape->uv.length;
             } else {
               faceUVIndices[i] -= 1;
             }
@@ -300,21 +311,29 @@ void readObj(char *filename, Sprite *sprite) {
         if(faceIndex == NULL || faceUVIndex == NULL) {
           fputs("readObj: Memory allocation failed.", stderr);
           fclose(file);
-          return;
+          return -7;
         }
         *faceIndex = faceIndices[i];
         *faceUVIndex = faceUVIndices[i];
-        push(&sprite->indices, faceIndex);
-        push(&sprite->uvIndices, faceUVIndex);
+        push(&shape->indices, faceIndex);
+        push(&shape->uvIndices, faceUVIndex);
       }
     } else if(temp[0] != '\0' && temp[0] != '#' && strcmp(temp, "vn") != 0 &&
               strcmp(temp, "vp") != 0 && strcmp(temp, "l") != 0 && strcmp(temp, "mtllib") != 0 &&
               strcmp(temp, "o") != 0 && strcmp(temp, "usemtl") != 0 && strcmp(temp, "s") != 0) {
       fprintf(stderr, "readObj: Unexpected word '%s' (%zu)", temp, line);
       fclose(file);
-      return;
+      return -8;
     }
     line += 1;
   }
   fclose(file);
+  return 0;
+}
+
+void discardShape(Shape shape) {
+  freeVector(&shape.indices);
+  freeVector(&shape.vertices);
+  freeVector(&shape.uv);
+  freeVector(&shape.uvIndices);
 }
