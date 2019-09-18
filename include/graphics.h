@@ -31,8 +31,8 @@ void translateTransformation(float dx, float dy, float dz);
 void scaleTransformation(float sx, float sy, float sz);
 void rotateTransformation(float rx, float ry, float rz);
 
-void fillTriangle(Vertex vertices[3], Image image, float *uv[3]);
-void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices);
+void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]);
+void fillPolygons(Vector vertices, Vector indices, Image *image, Vector uv, Vector uvIndices);
 
 Image loadBitmap(char *fileName, unsigned char transparent);
 Image genRect(unsigned int width, unsigned int height, unsigned char color);

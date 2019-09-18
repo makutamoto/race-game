@@ -113,9 +113,10 @@ static inline float edgeFunction(float x, float y, const float a[2], const float
 	return (a[0] - b[0]) * (y - a[1]) - (a[1] - b[1]) * (x - a[0]);
 }
 
-void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
+void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]) {
 	float transformed[3][4];
 	float textures[3][2];
+	float vertexColors[3];
 	unsigned int maxCoord[2], minCoord[2];
 	float area;
 	float aspect = (float)screenSize[0] / screenSize[1];
@@ -135,12 +136,18 @@ void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
 	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
 	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
 	area = edgeFunction(transformed[0][0], transformed[0][1], transformed[1], transformed[2]);
-	textures[0][0] = uv[0][0] * transformed[0][3];
-	textures[0][1] = uv[0][1] * transformed[0][3];
-	textures[1][0] = uv[1][0] * transformed[1][3];
-	textures[1][1] = uv[1][1] * transformed[1][3];
-	textures[2][0] = uv[2][0] * transformed[2][3];
-	textures[2][1] = uv[2][1] * transformed[2][3];
+	if(image == NULL) {
+		vertexColors[0] = vertices[0].color * transformed[0][3];
+		vertexColors[1] = vertices[1].color * transformed[1][3];
+		vertexColors[2] = vertices[2].color * transformed[2][3];
+	} else {
+		textures[0][0] = uv[0][0] * transformed[0][3];
+		textures[0][1] = uv[0][1] * transformed[0][3];
+		textures[1][0] = uv[1][0] * transformed[1][3];
+		textures[1][1] = uv[1][1] * transformed[1][3];
+		textures[2][0] = uv[2][0] * transformed[2][3];
+		textures[2][1] = uv[2][1] * transformed[2][3];
+	}
 	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
 		unsigned int x;
@@ -158,13 +165,21 @@ void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
 				weights[1] /= area;
 				weights[2] /= area;
 				depth = 1.0F / (transformed[0][3] * weights[0] + transformed[1][3] * weights[1] + transformed[2][3] * weights[2]);
-				dataCoords[0] = depth * (textures[0][0] * weights[0] + textures[1][0] * weights[1] + textures[2][0] * weights[2]);
-				dataCoords[1] =	depth * (textures[0][1] * weights[0] + textures[1][1] * weights[1] + textures[2][1] * weights[2]);
-				color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
-				if(color != image.transparent) {
-					if(depth < zBuffer[index]) {
-						buffer[index] = color;
-						zBuffer[index] = depth;
+				if(depth < zBuffer[index]) {
+					if(image == NULL) {
+						color = (unsigned char)roundf(depth * (vertexColors[0] * weights[0] + vertexColors[1] * weights[1] + vertexColors[2] * weights[2]));
+						if(color != NULL_COLOR) {
+							buffer[index] = color;
+							zBuffer[index] = depth;
+						}
+					} else {
+						dataCoords[0] = depth * (textures[0][0] * weights[0] + textures[1][0] * weights[1] + textures[2][0] * weights[2]);
+						dataCoords[1] =	depth * (textures[0][1] * weights[0] + textures[1][1] * weights[1] + textures[2][1] * weights[2]);
+						color = image->data[image->width * min((unsigned int)(roundf(image->height * dataCoords[1])), image->height - 1) + min((unsigned int)(roundf(image->width * dataCoords[0])), image->width - 1)];
+						if(color != image->transparent) {
+							buffer[index] = color;
+							zBuffer[index] = depth;
+						}
 					}
 				}
 			}
@@ -172,7 +187,7 @@ void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
 	}
 }
 
-void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices) {
+void fillPolygons(Vector vertices, Vector indices, Image *image, Vector uv, Vector uvIndices) {
 	unsigned long i;
 	static float defaultUV[2] = { 0.0F, 0.0F };
 	resetIteration(&indices);

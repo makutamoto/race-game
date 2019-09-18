@@ -70,14 +70,14 @@ static int enemy1Behaviour(Sprite *sprite) {
 static Sprite* spawnEnemy1(float x, float y) {
 	Sprite *enemy = malloc(sizeof(Sprite));
 	Sprite *bar = malloc(sizeof(Sprite));
-	*enemy = initSprite("Enemy1", enemy1);
-	*bar = initSprite("EnemyLifeBar", genRect(20, 5, RED));
+	// *enemy = initSprite("Enemy1", enemy1);
+	// *bar = initSprite("EnemyLifeBar", genRect(20, 5, RED));
 	enemy->position[0] = x;
 	enemy->position[1] = y;
 	enemy->shadowScale = 0.75;
 	enemy->shadowOffset[1] = 10.0;
 	enemy->behaviour = enemy1Behaviour;
-	bar->position[1] = enemy->texture.height / 2.0F + 5.0F;
+	bar->position[1] = enemy->texture->height / 2.0F + 5.0F;
 	bar->isInterface = TRUE;
 	push(&enemy->children, bar);
 	push(&scene.objects, enemy);
@@ -90,8 +90,8 @@ static int bulletBehaviour(Sprite *sprite) {
 		free(sprite);
 		return FALSE;
 	}
-	sprite->position[0] += 2.0F * cosf(sprite->angle[2] - PI / 2.0F);
-	sprite->position[1] += 2.0F * sinf(sprite->angle[2] - PI / 2.0F);
+	sprite->position[0] += -2.0F * cosf(sprite->angle[1] - PI / 2.0F);
+	sprite->position[2] += 2.0F * sinf(sprite->angle[1] - PI / 2.0F);
 	return TRUE;
 }
 
@@ -100,11 +100,12 @@ static int heroBehaviour(Sprite *sprite) {
 	addVec2(sprite->position, mulVec2ByScalar(controller.move, 1.0F, move), sprite->position);
 	sprite->position[0] = max(min(sprite->position[0], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
 	sprite->position[1] = max(min(sprite->position[1], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
-	sprite->angle[2] = angleVec2(controller.direction) + PI / 2.0F;
+	sprite->angle[1] = angleVec2(controller.direction) + PI / 2.0F;
 	if(controller.action) {
 		Sprite *bullet = malloc(sizeof(Sprite));
-		*bullet = initSprite("heroBullet", heroBullet);
-		bullet->angle[2] = sprite->angle[2];
+		*bullet = initSprite("heroBullet", NULL);
+		genPolygonsBox(5, 5, 30, bullet, YELLOW);
+		bullet->angle[1] = sprite->angle[1];
 		bullet->position[0] = sprite->position[0];
 		bullet->position[1] = sprite->position[1];
 		bullet->behaviour = bulletBehaviour;
@@ -128,15 +129,14 @@ static void initialize(void) {
 	scene = initScene();
 	scene.background = BLUE;
 	// lifeBarSprite = initSprite("heroSprite", lifeBar);
-	stageSprite = initSprite("stage", stage);
+	stageSprite = initSprite("stage", &stage);
 	// genPolygonsBox(100, 100, 100, &stageSprite.indices, &stageSprite.vertices, &stageSprite.uv, &stageSprite.uvIndices);
-	readObj("./assets/test.obj", &stageSprite.indices, &stageSprite.vertices, &stageSprite.uv, &stageSprite.uvIndices);
+	readObj("./assets/test.obj", &stageSprite);
 	stageSprite.position[2] = 10.0;
 	// lifeBarSprite.position[0] = 0.01;
 	// lifeBarSprite.position[1] = 0.01;
-	heroSprite = initSprite("Hero", hero);
-	genPolygonsPlane(32, 32, &heroSprite.indices, &heroSprite.vertices, &heroSprite.uv, &heroSprite.uvIndices);
-	readObj("./assets/hero.obj", &heroSprite.indices, &heroSprite.vertices, &heroSprite.uv, &heroSprite.uvIndices);
+	heroSprite = initSprite("Hero", &hero);
+	readObj("./assets/hero.obj", &heroSprite);
 	heroSprite.scale[0] = 32.0F;
 	heroSprite.scale[1] = 32.0F;
 	heroSprite.scale[2] = 32.0F;
@@ -180,10 +180,10 @@ static BOOL pollEvents(void) {
 						controller.direction[1] = 1.0F;
 						break;
 					case VK_LEFT:
-						controller.direction[0] = -1.0F;
+						controller.direction[0] = 1.0F;
 						break;
 					case VK_RIGHT:
-						controller.direction[0] = 1.0F;
+						controller.direction[0] = -1.0F;
 						break;
 					case VK_SPACE:
 						controller.action = TRUE;

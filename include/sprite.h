@@ -13,7 +13,7 @@ typedef struct _Sprite {
 	float scale[3];
 	float shadowScale;
 	float shadowOffset[2];
-	Image texture;
+	Image *texture;
 	Vector indices;
 	Vector vertices;
 	Vector uv;
@@ -24,13 +24,13 @@ typedef struct _Sprite {
 	int isInterface;
 }	Sprite;
 
-Sprite initSprite(const char *id, Image image);
+Sprite initSprite(const char *id, Image *image);
 void discardSprite(Sprite sprite);
 
 void drawSprite(Sprite *sprite);
 
-void genPolygonsPlane(unsigned int width, unsigned int height, Vector *indices, Vector *vertices, Vector *uv, Vector *uvIndices);
-void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth, Vector *indices, Vector *vertices, Vector *uv, Vector *uvIndices);
-void readObj(char *filename, Vector *indices, Vector *vertices, Vector *uv, Vector *uvIndices);
+void genPolygonsPlane(unsigned int width, unsigned int height, Sprite *sprite, unsigned char color);
+void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth, Sprite *sprite, unsigned char color);
+void readObj(char *filename, Sprite *sprite);
 
 #endif

@@ -8,7 +8,7 @@
 #define OBJ_LINE_BUFFER_SIZE 128
 #define OBJ_WORD_BUFFER_SIZE 16
 
-Sprite initSprite(const char *id, Image image) {
+Sprite initSprite(const char *id, Image *image) {
   Sprite sprite = {};
   memset(&sprite, 0, sizeof(sprite));
 	memcpy_s(sprite.id, sizeof(sprite.id), id, min(sizeof(sprite.id), strlen(id)));
@@ -49,20 +49,20 @@ void drawSprite(Sprite *sprite) {
 	popTransformation();
 }
 
-void genPolygonsPlane(unsigned int width, unsigned int height, Vector *indices, Vector *vertices, Vector *uv, Vector *uvIndices) {
+void genPolygonsPlane(unsigned int width, unsigned int height, Sprite *sprite, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
-  *indices = initVector();
-  *vertices = initVector();
-  *uv = initVector();
-  *uvIndices = initVector();
+  sprite->indices = initVector();
+  sprite->vertices = initVector();
+  sprite->uv = initVector();
+  sprite->uvIndices = initVector();
   static unsigned long generated_indices[] = { 0, 1, 2, 1, 3, 2 };
   Vertex generated_vertices[] = {
-    { { -halfWidth, -halfHeight, 0.0F, 1.0F }, 0 },
-    { { -halfWidth, halfHeight, 0.0F, 1.0F }, 0 },
-    { { halfWidth, -halfHeight, 0.0F, 1.0F }, 0 },
-    { { halfWidth, halfHeight, 0.0F, 1.0F }, 0 },
+    { { -halfWidth, -halfHeight, 0.0F, 1.0F }, color },
+    { { -halfWidth, halfHeight, 0.0F, 1.0F }, color },
+    { { halfWidth, -halfHeight, 0.0F, 1.0F }, color },
+    { { halfWidth, halfHeight, 0.0F, 1.0F }, color },
   };
   float generated_uv[][2] = {
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
@@ -73,8 +73,8 @@ void genPolygonsPlane(unsigned int width, unsigned int height, Vector *indices, 
     unsigned long *uvIndex = malloc(sizeof(unsigned long));
     *index = generated_indices[i];
     *uvIndex = generated_uvIndices[i];
-    push(indices, index);
-    push(uvIndices, uvIndex);
+    push(&sprite->indices, index);
+    push(&sprite->uvIndices, uvIndex);
   }
   for(i = 0;i < 4;i++) {
     Vertex *vertex = malloc(sizeof(Vertex));
@@ -82,20 +82,20 @@ void genPolygonsPlane(unsigned int width, unsigned int height, Vector *indices, 
     *vertex = generated_vertices[i];
     coords[0] = generated_uv[i][0];
     coords[1] = generated_uv[i][1];
-    push(vertices, vertex);
-    push(uv, coords);
+    push(&sprite->vertices, vertex);
+    push(&sprite->uv, coords);
   }
 }
 
-void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth, Vector *indices, Vector *vertices, Vector *uv, Vector *uvIndices) {
+void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth, Sprite *sprite, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
   float halfDepth = depth / 2.0F;
-  *indices = initVector();
-  *vertices = initVector();
-  *uv = initVector();
-  *uvIndices = initVector();
+  sprite->indices = initVector();
+  sprite->vertices = initVector();
+  sprite->uv = initVector();
+  sprite->uvIndices = initVector();
   static unsigned long generated_indices[] = {
     0, 1, 2, 1, 3, 2,
     4, 5, 6, 5, 7, 6,
@@ -105,35 +105,35 @@ void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth,
     20, 21, 22, 21, 23, 22,
   };
   Vertex generated_vertices[] = {
-    { { -halfWidth, -halfHeight, halfDepth, 1.0F }, 0 },
-    { { -halfWidth, halfHeight, halfDepth, 1.0F }, 0 },
-    { { halfWidth, -halfHeight, halfDepth, 1.0F }, 0 },
-    { { halfWidth, halfHeight, halfDepth, 1.0F }, 0 },
+    { { -halfWidth, -halfHeight, halfDepth, 1.0F }, color },
+    { { -halfWidth, halfHeight, halfDepth, 1.0F }, color },
+    { { halfWidth, -halfHeight, halfDepth, 1.0F }, color },
+    { { halfWidth, halfHeight, halfDepth, 1.0F }, color },
 
-    { { -halfWidth, -halfHeight, -halfDepth, 1.0F }, 0 },
-    { { halfWidth, -halfHeight, -halfDepth, 1.0F }, 0 },
-    { { -halfWidth, halfHeight, -halfDepth, 1.0F }, 0 },
-    { { halfWidth, halfHeight, -halfDepth, 1.0F }, 0 },
+    { { -halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
+    { { halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
+    { { -halfWidth, halfHeight, -halfDepth, 1.0F }, color },
+    { { halfWidth, halfHeight, -halfDepth, 1.0F }, color },
 
-    { { halfDepth, -halfWidth, -halfHeight, 1.0F }, 0 },
-    { { halfDepth, -halfWidth, halfHeight, 1.0F }, 0 },
-    { { halfDepth, halfWidth, -halfHeight, 1.0F }, 0 },
-    { { halfDepth, halfWidth, halfHeight, 1.0F }, 0 },
+    { { halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
+    { { halfWidth, -halfHeight, halfDepth, 1.0F }, color },
+    { { halfWidth, halfHeight, -halfDepth, 1.0F }, color },
+    { { halfWidth, halfHeight, halfDepth, 1.0F }, color },
 
-    { { -halfDepth, -halfWidth, -halfHeight, 1.0F }, 0 },
-    { { -halfDepth, halfWidth, -halfHeight, 1.0F }, 0 },
-    { { -halfDepth, -halfWidth, halfHeight, 1.0F }, 0 },
-    { { -halfDepth, halfWidth, halfHeight, 1.0F }, 0 },
+    { { -halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
+    { { -halfWidth, halfHeight, -halfDepth, 1.0F }, color },
+    { { -halfWidth, -halfHeight, halfDepth, 1.0F }, color },
+    { { -halfWidth, halfHeight, halfDepth, 1.0F }, color },
 
-    { { -halfWidth, -halfDepth, -halfHeight, 1.0F }, 0 },
-    { { -halfWidth, -halfDepth, halfHeight, 1.0F }, 0 },
-    { { halfWidth, -halfDepth, -halfHeight, 1.0F }, 0 },
-    { { halfWidth, -halfDepth, halfHeight, 1.0F }, 0 },
+    { { -halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
+    { { -halfWidth, -halfHeight, halfDepth, 1.0F }, color },
+    { { halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
+    { { halfWidth, -halfHeight, halfDepth, 1.0F }, color },
 
-    { { -halfWidth, halfDepth, -halfHeight, 1.0F }, 0 },
-    { { halfWidth, halfDepth, -halfHeight, 1.0F }, 0 },
-    { { -halfWidth, halfDepth, halfHeight, 1.0F }, 0 },
-    { { halfWidth, halfDepth, halfHeight, 1.0F }, 0 },
+    { { -halfWidth, halfHeight, -halfDepth, 1.0F }, color },
+    { { halfWidth, halfHeight, -halfDepth, 1.0F }, color },
+    { { -halfWidth, halfHeight, halfDepth, 1.0F }, color },
+    { { halfWidth, halfHeight, halfDepth, 1.0F }, color },
   };
   float generated_uv[][2] = {
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
@@ -156,8 +156,8 @@ void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth,
     unsigned long *uvIndex = malloc(sizeof(unsigned long));
     *index = generated_indices[i];
     *uvIndex = generated_uvIndices[i];
-    push(indices, index);
-    push(uvIndices, uvIndex);
+    push(&sprite->indices, index);
+    push(&sprite->uvIndices, uvIndex);
   }
   for(i = 0;i < 24;i++) {
     Vertex *vertex = malloc(sizeof(Vertex));
@@ -165,8 +165,8 @@ void genPolygonsBox(unsigned int width, unsigned int height, unsigned int depth,
     *vertex = generated_vertices[i];
     coords[0] = generated_uv[i][0];
     coords[1] = generated_uv[i][1];
-    push(vertices, vertex);
-    push(uv, coords);
+    push(&sprite->vertices, vertex);
+    push(&sprite->uv, coords);
   }
 }
 
@@ -192,15 +192,15 @@ size_t getUntil(char *string, char separator, size_t index, char *out, size_t ou
   return index + 1;
 }
 
-void readObj(char *filename, Vector *indices, Vector *vertices, Vector *uv, Vector *uvIndices) {
+void readObj(char *filename, Sprite *sprite) {
   FILE *file;
   char buffer[OBJ_LINE_BUFFER_SIZE];
   char temp[OBJ_WORD_BUFFER_SIZE];
   size_t line = 1;
-  *vertices = initVector();
-  *indices = initVector();
-  *uv = initVector();
-  *uvIndices = initVector();
+  sprite->vertices = initVector();
+  sprite->indices = initVector();
+  sprite->uv = initVector();
+  sprite->uvIndices = initVector();
   if(fopen_s(&file, filename, "r")) {
     fputs("File not found.", stderr);
     fclose(file);
@@ -233,7 +233,7 @@ void readObj(char *filename, Vector *indices, Vector *vertices, Vector *uv, Vect
           vertex->components[i] = (float)atof(temp);
         }
       }
-      push(vertices, vertex);
+      push(&sprite->vertices, vertex);
     } else if(strcmp(temp, "vt") == 0) {
       float *coords = malloc(2 * sizeof(float));
       if(coords == NULL) {
@@ -260,7 +260,7 @@ void readObj(char *filename, Vector *indices, Vector *vertices, Vector *uv, Vect
           }
         }
       }
-      push(uv, coords);
+      push(&sprite->uv, coords);
     } else if(strcmp(temp, "f") == 0) {
       unsigned long faceIndices[3];
       unsigned long faceUVIndices[3];
@@ -277,7 +277,7 @@ void readObj(char *filename, Vector *indices, Vector *vertices, Vector *uv, Vect
           index2 = getUntil(temp, '/', index2, temp2, OBJ_WORD_BUFFER_SIZE);
           faceIndices[i] = atoi(temp2);
           if(faceIndices[i] < 0) {
-            faceIndices[i] += vertices->length;
+            faceIndices[i] += sprite->vertices.length;
           } else {
             faceIndices[i] -= 1;
           }
@@ -287,7 +287,7 @@ void readObj(char *filename, Vector *indices, Vector *vertices, Vector *uv, Vect
           } else {
             faceUVIndices[i] = atoi(temp2);
             if(faceUVIndices[i] < 0) {
-              faceUVIndices[i] += uv->length;
+              faceUVIndices[i] += sprite->uv.length;
             } else {
               faceUVIndices[i] -= 1;
             }
@@ -304,8 +304,8 @@ void readObj(char *filename, Vector *indices, Vector *vertices, Vector *uv, Vect
         }
         *faceIndex = faceIndices[i];
         *faceUVIndex = faceUVIndices[i];
-        push(indices, faceIndex);
-        push(uvIndices, faceUVIndex);
+        push(&sprite->indices, faceIndex);
+        push(&sprite->uvIndices, faceUVIndex);
       }
     } else if(temp[0] != '\0' && temp[0] != '#' && strcmp(temp, "vn") != 0 &&
               strcmp(temp, "vp") != 0 && strcmp(temp, "l") != 0 && strcmp(temp, "mtllib") != 0 &&
