@@ -27,6 +27,7 @@ void pushTransformation(void);
 void popTransformation(void);
 void clearTransformation(void);
 void setCameraMat4(float mat[4][4]);
+void clearCameraMat4(void);
 void translateTransformation(float dx, float dy, float dz);
 void scaleTransformation(float sx, float sy, float sz);
 void rotateTransformation(float rx, float ry, float rz);

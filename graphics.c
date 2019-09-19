@@ -93,6 +93,10 @@ void setCameraMat4(float mat[4][4]) {
 	memcpy_s(camera, sizeof(camera), mat, sizeof(camera));
 }
 
+void clearCameraMat4(void) {
+	genIdentityMat4(camera);
+}
+
 void translateTransformation(float dx, float dy, float dz) {
 	float temp1[4][4], temp2[4][4];
 	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(transformation));
@@ -140,6 +144,13 @@ void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]) {
 	mulMat4Vec4(transformation, vertices[0].components, transformedTemp[0]);
 	mulMat4Vec4(transformation, vertices[1].components, transformedTemp[1]);
 	mulMat4Vec4(transformation, vertices[2].components, transformedTemp[2]);
+	// printVec4(vertices[0].components);
+	// printVec4(vertices[1].components);
+	// printVec4(vertices[2].components);
+	// printVec4(transformedTemp[0]);
+	// printVec4(transformedTemp[1]);
+	// printVec4(transformedTemp[2]);
+	// puts("");
 	if(aabbClear) {
 		aabbTemp[0][0] = transformedTemp[0][0];
 		aabbTemp[0][1] = transformedTemp[0][0];

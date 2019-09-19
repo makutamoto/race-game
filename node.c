@@ -3,38 +3,38 @@
 
 #include<time.h>
 
-#include "./include/sprite.h"
+#include "./include/node.h"
 #include "./include/graphics.h"
 #include "./include/vector.h"
 
 #define OBJ_LINE_BUFFER_SIZE 128
 #define OBJ_WORD_BUFFER_SIZE 32
 
-Sprite initSprite(const char *id, Image *image) {
-  Sprite sprite = {};
-  memset(&sprite, 0, sizeof(sprite));
-	memcpy_s(sprite.id, sizeof(sprite.id), id, min(sizeof(sprite.id), strlen(id)));
-	sprite.scale[0] = 1.0;
-	sprite.scale[1] = 1.0;
-  sprite.scale[2] = 1.0;
-	sprite.texture = image;
-  sprite.children = initVector();
-  return sprite;
+Node initNode(const char *id, Image *image) {
+  Node node = {};
+  memset(&node, 0, sizeof(node));
+	memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
+	node.scale[0] = 1.0;
+	node.scale[1] = 1.0;
+  node.scale[2] = 1.0;
+	node.texture = image;
+  node.children = initVector();
+  return node;
 }
 
-void discardSprite(Sprite sprite) {
-  freeVector(&sprite.children);
+void discardNode(Node node) {
+  freeVector(&node.children);
 }
 
-void drawSprite(Sprite *sprite) {
-  Sprite *child;
+void drawNode(Node *node) {
+  Node *child;
   IntervalEvent *interval;
 
-  if(sprite->behaviour != NULL) {
-    if(!sprite->behaviour(sprite)) return;
+  if(node->behaviour != NULL) {
+    if(!node->behaviour(node)) return;
   }
-  resetIteration(&sprite->intervalEvents);
-  while((interval = nextData(&sprite->intervalEvents))) {
+  resetIteration(&node->intervalEvents);
+  while((interval = nextData(&node->intervalEvents))) {
     clock_t current = clock();
     clock_t diff = current - interval->begin;
     if(diff < 0) {
@@ -42,37 +42,37 @@ void drawSprite(Sprite *sprite) {
     } else {
       if(interval->interval < diff) {
         interval->begin = current;
-        if(!interval->callback(sprite)) return;
+        if(!interval->callback(node)) return;
       }
     }
   }
 	pushTransformation();
-  translateTransformation(sprite->position[0], sprite->position[1], sprite->position[2]);
-  rotateTransformation(sprite->angle[0], sprite->angle[1], sprite->angle[2]);
-  resetIteration(&sprite->children);
-  while((child = previousData(&sprite->children))) drawSprite(child);
-  scaleTransformation(sprite->scale[0], sprite->scale[1], sprite->scale[2]);
+  translateTransformation(node->position[0], node->position[1], node->position[2]);
+  rotateTransformation(node->angle[0], node->angle[1], node->angle[2]);
+  resetIteration(&node->children);
+  while((child = previousData(&node->children))) drawNode(child);
+  scaleTransformation(node->scale[0], node->scale[1], node->scale[2]);
   clearAABB();
-	fillPolygons(sprite->shape.vertices, sprite->shape.indices, sprite->texture, sprite->shape.uv, sprite->shape.uvIndices);
-  getAABB(sprite->aabb);
+	fillPolygons(node->shape.vertices, node->shape.indices, node->texture, node->shape.uv, node->shape.uvIndices);
+  getAABB(node->aabb);
   popTransformation();
 }
 
-int testCollision(Sprite a, Sprite b) {
+int testCollision(Node a, Node b) {
   return (a.aabb[0][0] <= b.aabb[0][1] && a.aabb[0][1] >= b.aabb[0][0]) &&
          (a.aabb[1][0] <= b.aabb[1][1] && a.aabb[1][1] >= b.aabb[1][0]) &&
          (a.aabb[2][0] <= b.aabb[2][1] && a.aabb[2][1] >= b.aabb[2][0]);
 }
 
-void addIntervalEvent(Sprite *sprite, unsigned int milliseconds, int (*callback)(Sprite*)) {
+void addIntervalEvent(Node *node, unsigned int milliseconds, int (*callback)(Node*)) {
   IntervalEvent *interval = malloc(sizeof(IntervalEvent));
   interval->begin = clock();
   interval->interval = milliseconds * CLOCKS_PER_SEC / 1000;
   interval->callback = callback;
-  push(&sprite->intervalEvents, interval);
+  push(&node->intervalEvents, interval);
 }
 
-Shape initShapePlane(unsigned int width, unsigned int height, unsigned char color) {
+Shape initShapePlane(float width, float height, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
@@ -109,7 +109,44 @@ Shape initShapePlane(unsigned int width, unsigned int height, unsigned char colo
   return shape;
 }
 
-Shape initShapeBox(unsigned int width, unsigned int height, unsigned int depth, unsigned char color) {
+Shape initShapePlaneInv(float width, float height, unsigned char color) {
+  int i;
+  float halfWidth = width / 2.0F;
+  float halfHeight = height / 2.0F;
+  Shape shape = {
+    initVector(), initVector(), initVector(), initVector()
+  };
+  static unsigned long generated_indices[] = { 0, 1, 2, 1, 3, 2 };
+  Vertex generated_vertices[] = {
+    { { -halfWidth, -halfHeight, 0.0F, 1.0F }, color },
+    { { -halfWidth, halfHeight, 0.0F, 1.0F }, color },
+    { { halfWidth, -halfHeight, 0.0F, 1.0F }, color },
+    { { halfWidth, halfHeight, 0.0F, 1.0F }, color },
+  };
+  float generated_uv[][2] = {
+    { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
+  };
+  for(i = 0;i < 6;i++) {
+    unsigned long *index = malloc(sizeof(unsigned long));
+    unsigned long *uvIndex = malloc(sizeof(unsigned long));
+    *index = generated_indices[i];
+    *uvIndex = generated_indices[i];
+    push(&shape.indices, index);
+    push(&shape.uvIndices, uvIndex);
+  }
+  for(i = 0;i < 4;i++) {
+    Vertex *vertex = malloc(sizeof(Vertex));
+    float *coords = malloc(2 * sizeof(float));
+    *vertex = generated_vertices[i];
+    coords[0] = generated_uv[i][0];
+    coords[1] = generated_uv[i][1];
+    push(&shape.vertices, vertex);
+    push(&shape.uv, coords);
+  }
+  return shape;
+}
+
+Shape initShapeBox(float width, float height, float depth, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;

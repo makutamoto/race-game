@@ -8,7 +8,7 @@
 #include "./include/graphics.h"
 #include "./include/colors.h"
 #include "./include/scene.h"
-#include "./include/sprite.h"
+#include "./include/node.h"
 #include "./include/vector.h"
 
 #pragma comment(lib, "user32.lib")
@@ -42,10 +42,10 @@ static Shape enemyLifeShape;
 static Shape heroBulletShape;
 static Shape enemyBulletShape;
 
-static Sprite lifeBarSprite;
+static Node lifeBarNode;
 static Scene scene;
-static Sprite heroSprite;
-static Sprite stageSprite;
+static Node heroNode;
+static Node stageNode;
 
 static void initScreen(short width, short height) {
 	CONSOLE_CURSOR_INFO info = { 1, FALSE };
@@ -63,18 +63,18 @@ static void initScreen(short width, short height) {
 	SetConsoleCursorInfo(screen, &info);
 }
 
-static int bulletBehaviour(Sprite *sprite) {
-	if(sprite->collisionTargets.length > 0 || distance2(heroSprite.position, sprite->position) > 300) {
-		removeByData(&scene.objects, sprite);
-		free(sprite);
+static int bulletBehaviour(Node *node) {
+	if(node->collisionTargets.length > 0 || distance2(heroNode.position, node->position) > 500) {
+		removeByData(&scene.objects, node);
+		free(node);
 		return FALSE;
 	}
 	return TRUE;
 }
 
 static void shootBullet(const char *name, Shape shape, const float position[3], float angle, unsigned int collisionMask) {
-	Sprite *bullet = malloc(sizeof(Sprite));
-	*bullet = initSprite(name, NULL);
+	Node *bullet = malloc(sizeof(Node));
+	*bullet = initNode(name, NULL);
 	bullet->shape = shape;
 	bullet->velocity[0] = 2.0F * cosf(angle - PI / 2.0F);
 	bullet->velocity[2] = -2.0F * sinf(angle - PI / 2.0F);
@@ -82,39 +82,36 @@ static void shootBullet(const char *name, Shape shape, const float position[3], 
 	bullet->position[0] = position[0];
 	bullet->position[1] = position[1];
 	bullet->position[2] = position[2];
-	bullet->collisionMask = collisionMask;
+	bullet->collisionMaskActive = collisionMask;
 	bullet->behaviour = bulletBehaviour;
 	push(&scene.objects, bullet);
 }
 
-static int enemy1Behaviour(Sprite *sprite) {
+static int enemy1Behaviour(Node *node) {
 	// float direction[2];
-	// if(sprite->collisionTarget != NULL && !strcmp(sprite->collisionTarget->name, "bullet")) {
-		//   removeByData(&scene.objects, sprite->collisionTarget);
-		//   sprite->collisionTarget = NULL;
+	// if(node->collisionTarget != NULL && !strcmp(node->collisionTarget->name, "bullet")) {
+		//   removeByData(&scene.objects, node->collisionTarget);
+		//   node->collisionTarget = NULL;
 		// }
-		// direction2(heroSprite.position, sprite->position, direction);
-		// mulVec2ByScalar(direction,  min(1.0F, distance2(heroSprite.position, sprite->position) - 50.0F), direction);
-		// addVec2(sprite->position, direction, sprite->position);
-		shootBullet("enemyBullet", enemyBulletShape, sprite->position, PI / 2.0F, ENEMY_BULLET_COLLISIONMASK);
-		shootBullet("enemyBullet", enemyBulletShape, sprite->position, PI, ENEMY_BULLET_COLLISIONMASK);
-		shootBullet("enemyBullet", enemyBulletShape, sprite->position, -PI, ENEMY_BULLET_COLLISIONMASK);
-		sprite->position[2] -= 0.1F;
-		return TRUE;
+		// direction2(heroNode.position, node->position, direction);
+		// mulVec2ByScalar(direction,  min(1.0F, distance2(heroNode.position, node->position) - 50.0F), direction);
+		// addVec2(node->position, direction, node->position);
+	node->position[2] -= 0.1F;
+	return TRUE;
 }
 
-static int enemy1BehaviourInterval(Sprite *sprite) {
-		shootBullet("enemyBullet", enemyBulletShape, sprite->position, PI / 2.0F, ENEMY_BULLET_COLLISIONMASK);
-		shootBullet("enemyBullet", enemyBulletShape, sprite->position, PI, ENEMY_BULLET_COLLISIONMASK);
-		shootBullet("enemyBullet", enemyBulletShape, sprite->position, -PI, ENEMY_BULLET_COLLISIONMASK);
-		return TRUE;
+static int enemy1BehaviourInterval(Node *node) {
+	shootBullet("enemyBullet", enemyBulletShape, node->position, PI / 2.0F, ENEMY_BULLET_COLLISIONMASK);
+	shootBullet("enemyBullet", enemyBulletShape, node->position, PI, ENEMY_BULLET_COLLISIONMASK);
+	shootBullet("enemyBullet", enemyBulletShape, node->position, PI / 2.0F + PI, ENEMY_BULLET_COLLISIONMASK);
+	return TRUE;
 }
 
-static Sprite* spawnEnemy1(float x, float y, float z) {
-	Sprite *enemy = malloc(sizeof(Sprite));
-	Sprite *bar = malloc(sizeof(Sprite));
-	*enemy = initSprite("Enemy1", &enemy1);
-	*bar = initSprite("EnemyLifeBar", NULL);
+static Node* spawnEnemy1(float x, float y, float z) {
+	Node *enemy = malloc(sizeof(Node));
+	Node *bar = malloc(sizeof(Node));
+	*enemy = initNode("Enemy1", &enemy1);
+	*bar = initNode("EnemyLifeBar", NULL);
 	enemy->shape = enemy1Shape;
 	enemy->position[0] = x;
 	enemy->position[1] = y;
@@ -122,7 +119,7 @@ static Sprite* spawnEnemy1(float x, float y, float z) {
 	enemy->scale[0] = 32.0F;
 	enemy->scale[1] = 32.0F;
 	enemy->scale[2] = 32.0F;
-	enemy->collisionMask = HERO_BULLET_COLLISIONMASK;
+	enemy->collisionMaskPassive = HERO_BULLET_COLLISIONMASK;
 	enemy->behaviour = enemy1Behaviour;
 	addIntervalEvent(enemy, 1000, enemy1BehaviourInterval);
 	bar->shape = enemyLifeShape;
@@ -133,14 +130,14 @@ static Sprite* spawnEnemy1(float x, float y, float z) {
 	return enemy;
 }
 
-static int heroBehaviour(Sprite *sprite) {
+static int heroBehaviour(Node *node) {
 	float move[2];
-	addVec2(sprite->position, mulVec2ByScalar(controller.move, 1.0F, move), sprite->position);
-	sprite->position[0] = max(min(sprite->position[0], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
-	sprite->position[1] = max(min(sprite->position[1], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
-	sprite->angle[1] = angleVec2(controller.direction) + PI / 2.0F;
+	addVec2(node->position, mulVec2ByScalar(controller.move, 1.0F, move), node->position);
+	node->position[0] = max(min(node->position[0], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
+	node->position[1] = max(min(node->position[1], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
+	node->angle[1] = angleVec2(controller.direction) + PI / 2.0F;
 	if(controller.action) {
-		shootBullet("heroBullet", heroBulletShape, sprite->position, sprite->angle[1], HERO_BULLET_COLLISIONMASK);
+		shootBullet("heroBullet", heroBulletShape, node->position, node->angle[1], HERO_BULLET_COLLISIONMASK);
 		controller.action = FALSE;
 		PlaySound(TEXT("assets/laser.wav"), NULL, SND_ASYNC | SND_FILENAME);
 	}
@@ -152,7 +149,7 @@ static void initialize(void) {
 	input = GetStdHandle(STD_INPUT_HANDLE);
 	initScreen(200, 200);
 	initGraphics(200, 200);
-	lifeBar = genRect(5, 1, RED);
+	// lifeBar = genRect(5, 1, RED);
 	hero = loadBitmap("assets/hero3d.bmp", NULL_COLOR);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", NULL_COLOR);
@@ -163,24 +160,24 @@ static void initialize(void) {
 	enemyLifeShape = initShapePlane(20, 5, RED);
 	heroBulletShape = initShapeBox(5, 5, 30, YELLOW);
 	enemyBulletShape = initShapeBox(5, 5, 30, MAGENTA);
-	// lifeBarSprite = initSprite("heroSprite", lifeBar);
-	stageSprite = initSprite("stage", &stage);
-	stageSprite.shape = initShapeBox(100, 100, 100, YELLOW);
-	// initShapeFromObj(&stageSprite.shape, "./assets/test.obj");
-	stageSprite.position[2] = 10.0;
-	// lifeBarSprite.position[0] = 0.01;
-	// lifeBarSprite.position[1] = 0.01;
-	heroSprite = initSprite("Hero", &hero);
-	initShapeFromObj(&heroSprite.shape, "./assets/hero.obj");
-	heroSprite.scale[0] = 32.0F;
-	heroSprite.scale[1] = 32.0F;
-	heroSprite.scale[2] = 32.0F;
-	heroSprite.collisionMask = ENEMY_BULLET_COLLISIONMASK;
-	heroSprite.behaviour = heroBehaviour;
-	// push(&scene.interfaces, &lifeBarSprite);
-	push(&scene.objects, &heroSprite);
-	// push(&scene.objects, &stageSprite);
-	// spawnEnemy1(0.0F, -2000.0F);
+	lifeBarNode = initNode("lifeBarNode", NULL);
+	stageNode = initNode("stage", &stage);
+	initShapeFromObj(&stageNode.shape, "./assets/test.obj");
+	stageNode.position[2] = 10.0F;
+	lifeBarNode.shape = initShapePlaneInv(1.0F, 0.1F, RED);
+	lifeBarNode.position[0] = -1.00F;
+	lifeBarNode.position[1] = -1.00F;
+	lifeBarNode.position[2] = 0.01F;
+	heroNode = initNode("Hero", &hero);
+	initShapeFromObj(&heroNode.shape, "./assets/hero.obj");
+	heroNode.scale[0] = 32.0F;
+	heroNode.scale[1] = 32.0F;
+	heroNode.scale[2] = 32.0F;
+	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK;
+	heroNode.behaviour = heroBehaviour;
+	push(&scene.interfaces, &lifeBarNode);
+	push(&scene.objects, &heroNode);
+	push(&scene.objects, &stageNode);
 }
 
 static BOOL pollEvents(void) {
@@ -254,15 +251,15 @@ static BOOL pollEvents(void) {
 }
 
 static void deinitialize(void) {
-	discardShape(heroSprite.shape);
-	discardShape(stageSprite.shape);
+	discardShape(heroNode.shape);
+	discardShape(stageNode.shape);
 	discardShape(enemy1Shape);
 	discardShape(enemyLifeShape);
 	discardShape(heroBulletShape);
 	discardShape(enemyBulletShape);
-	discardSprite(lifeBarSprite);
-	discardSprite(heroSprite);
-	discardSprite(stageSprite);
+	discardNode(lifeBarNode);
+	discardNode(heroNode);
+	discardNode(stageNode);
 	freeImage(lifeBar);
 	freeImage(hero);
 	freeImage(heroBullet);
@@ -274,13 +271,13 @@ int main(void) {
 	initialize();
 
 
-	spawnEnemy1(0.0F, 0.0F, 100.0F);
+	// spawnEnemy1(0.0F, 0.0F, 500.0F);
 
 
 	while(TRUE) {
 		if(!pollEvents()) break;
-		scene.camera.target[0] = heroSprite.position[0];
-		scene.camera.target[1] = heroSprite.position[1];
+		scene.camera.target[0] = heroNode.position[0];
+		scene.camera.target[1] = heroNode.position[1];
 		drawScene(&scene, screen);
 	}
 	deinitialize();

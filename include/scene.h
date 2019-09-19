@@ -3,7 +3,7 @@
 
 #include<Windows.h>
 
-#include "../include/sprite.h"
+#include "../include/node.h"
 #include "../include/vector.h"
 
 typedef struct {

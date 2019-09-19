@@ -1,7 +1,7 @@
 #include<Windows.h>
 
 #include "./include/scene.h"
-#include "./include/sprite.h"
+#include "./include/node.h"
 #include "./include/vector.h"
 #include "./include/matrix.h"
 #include "./include/graphics.h"
@@ -24,7 +24,7 @@ Scene initScene(void) {
 }
 
 void drawScene(Scene *scene, HANDLE screen) {
-  Sprite *sprite;
+  Node *node;
   float lookAt[4][4];
   float projection[4][4];
   float camera[4][4];
@@ -36,28 +36,28 @@ void drawScene(Scene *scene, HANDLE screen) {
   clearBuffer(scene->background);
   clearZBuffer();
   resetIteration(&scene->objects);
-
-  while((sprite = previousData(&scene->objects))) {
-    addVec3(sprite->position, sprite->velocity, sprite->position);
-    clearVector(&sprite->collisionTargets);
-    if(sprite->collisionMask) {
-      Sprite *collisionTarget;
+  while((node = previousData(&scene->objects))) {
+    drawNode(node);
+    addVec3(node->position, node->velocity, node->position);
+    clearVector(&node->collisionTargets);
+    if(node->collisionMaskActive || node->collisionMaskPassive) {
+      Node *collisionTarget;
       VectorItem *item = scene->objects.currentItem;
-      while((collisionTarget = (Sprite*)previousData(&scene->objects))) {
-        if(sprite->collisionMask & collisionTarget->collisionMask) {
-          if(testCollision(*sprite, *collisionTarget)) {
-            push(&sprite->collisionTargets, collisionTarget);
-            push(&collisionTarget->collisionTargets, sprite);
+      while((collisionTarget = (Node*)previousData(&scene->objects))) {
+        if(testCollision(*node, *collisionTarget)) {
+          if(node->collisionMaskPassive & collisionTarget->collisionMaskActive || node->collisionMaskActive & collisionTarget->collisionMaskPassive) {
+            push(&node->collisionTargets, collisionTarget);
+            push(&collisionTarget->collisionTargets, node);
           }
         }
       }
       scene->objects.currentItem = item;
     }
-    drawSprite(sprite);
   }
+  clearCameraMat4();
   clearTransformation();
   resetIteration(&scene->interfaces);
-  while((sprite = previousData(&scene->interfaces))) drawSprite(sprite);
+  while((node = previousData(&scene->interfaces))) drawNode(node);
   flushBuffer(screen);
 }
 
