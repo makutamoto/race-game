@@ -17,8 +17,7 @@ typedef struct {
 } Camera;
 
 typedef struct {
-  Vector objects;
-  Vector interfaces;
+  Vector nodes;
   unsigned char background;
   Camera camera;
 } Scene;

@@ -12,13 +12,25 @@
 
 Node initNode(const char *id, Image *image) {
   Node node = {};
-  memset(&node, 0, sizeof(node));
-	memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
+  memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
 	node.scale[0] = 1.0;
 	node.scale[1] = 1.0;
   node.scale[2] = 1.0;
 	node.texture = image;
   node.children = initVector();
+  return node;
+}
+
+Node initNodeUI(const char *id, Image *image, unsigned char color) {
+  Node node = {};
+  memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
+	node.scale[0] = 1.0;
+	node.scale[1] = 1.0;
+  node.scale[2] = 1.0;
+	node.texture = image;
+  node.shape = initShapePlaneInv(1.0F, 1.0F, color);
+  node.children = initVector();
+  node.isInterface = TRUE;
   return node;
 }
 
@@ -47,11 +59,19 @@ void drawNode(Node *node) {
     }
   }
 	pushTransformation();
-  translateTransformation(node->position[0], node->position[1], node->position[2]);
+  if(node->isInterface) {
+    translateTransformation((node->position[0] + node->scale[0] / 2.0F) / 50.0F - 1.0F, (node->position[1] + node->scale[1] / 2.0F) / 50.0F - 1.0F, 0.0F);
+  } else {
+    translateTransformation(node->position[0], node->position[1], node->position[2]);
+  }
   rotateTransformation(node->angle[0], node->angle[1], node->angle[2]);
   resetIteration(&node->children);
   while((child = previousData(&node->children))) drawNode(child);
-  scaleTransformation(node->scale[0], node->scale[1], node->scale[2]);
+  if(node->isInterface) {
+    scaleTransformation(node->scale[0] / 50.0F, node->scale[1] / 50.0F, 1.0F);
+  } else {
+    scaleTransformation(node->scale[0], node->scale[1], node->scale[2]);
+  }
   clearAABB();
 	fillPolygons(node->shape.vertices, node->shape.indices, node->texture, node->shape.uv, node->shape.uvIndices);
   getAABB(node->aabb);

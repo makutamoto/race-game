@@ -65,7 +65,7 @@ static void initScreen(short width, short height) {
 
 static int bulletBehaviour(Node *node) {
 	if(node->collisionTargets.length > 0 || distance2(heroNode.position, node->position) > 500) {
-		removeByData(&scene.objects, node);
+		removeByData(&scene.nodes, node);
 		free(node);
 		return FALSE;
 	}
@@ -84,13 +84,13 @@ static void shootBullet(const char *name, Shape shape, const float position[3], 
 	bullet->position[2] = position[2];
 	bullet->collisionMaskActive = collisionMask;
 	bullet->behaviour = bulletBehaviour;
-	push(&scene.objects, bullet);
+	push(&scene.nodes, bullet);
 }
 
 static int enemy1Behaviour(Node *node) {
 	// float direction[2];
 	// if(node->collisionTarget != NULL && !strcmp(node->collisionTarget->name, "bullet")) {
-		//   removeByData(&scene.objects, node->collisionTarget);
+		//   removeByData(&scene.nodes, node->collisionTarget);
 		//   node->collisionTarget = NULL;
 		// }
 		// direction2(heroNode.position, node->position, direction);
@@ -123,10 +123,9 @@ static Node* spawnEnemy1(float x, float y, float z) {
 	enemy->behaviour = enemy1Behaviour;
 	addIntervalEvent(enemy, 1000, enemy1BehaviourInterval);
 	bar->shape = enemyLifeShape;
-	bar->position[1] = 16.0F;
-	bar->isInterface = TRUE;
+	bar->position[1] = -16.0F;
 	push(&enemy->children, bar);
-	push(&scene.objects, enemy);
+	push(&scene.nodes, enemy);
 	return enemy;
 }
 
@@ -160,14 +159,14 @@ static void initialize(void) {
 	enemyLifeShape = initShapePlane(20, 5, RED);
 	heroBulletShape = initShapeBox(5, 5, 30, YELLOW);
 	enemyBulletShape = initShapeBox(5, 5, 30, MAGENTA);
-	lifeBarNode = initNode("lifeBarNode", NULL);
+	lifeBarNode = initNodeUI("lifeBarNode", NULL, RED);
 	stageNode = initNode("stage", &stage);
 	initShapeFromObj(&stageNode.shape, "./assets/test.obj");
 	stageNode.position[2] = 10.0F;
-	lifeBarNode.shape = initShapePlaneInv(1.0F, 0.1F, RED);
-	lifeBarNode.position[0] = -1.00F;
-	lifeBarNode.position[1] = -1.00F;
-	lifeBarNode.position[2] = 0.01F;
+	lifeBarNode.position[0] = 2.5F;
+	lifeBarNode.position[1] = 2.5F;
+	lifeBarNode.scale[0] = 30.0F;
+	lifeBarNode.scale[1] = 5.0F;
 	heroNode = initNode("Hero", &hero);
 	initShapeFromObj(&heroNode.shape, "./assets/hero.obj");
 	heroNode.scale[0] = 32.0F;
@@ -175,9 +174,9 @@ static void initialize(void) {
 	heroNode.scale[2] = 32.0F;
 	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
-	push(&scene.interfaces, &lifeBarNode);
-	push(&scene.objects, &heroNode);
-	push(&scene.objects, &stageNode);
+	push(&scene.nodes, &lifeBarNode);
+	push(&scene.nodes, &heroNode);
+	push(&scene.nodes, &stageNode);
 }
 
 static BOOL pollEvents(void) {
@@ -271,7 +270,7 @@ int main(void) {
 	initialize();
 
 
-	// spawnEnemy1(0.0F, 0.0F, 500.0F);
+	spawnEnemy1(0.0F, 0.0F, 500.0F);
 
 
 	while(TRUE) {

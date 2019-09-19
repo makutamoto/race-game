@@ -8,8 +8,7 @@
 
 Scene initScene(void) {
   Scene scene = {
-    .objects = initVector(),
-    .interfaces = initVector(),
+    .nodes = initVector(),
     .camera = {
       .position = { 0.0F, -100.0F, -100.0F },
       .target = { 0.0F, 0.0F, 0.0F },
@@ -35,15 +34,21 @@ void drawScene(Scene *scene, HANDLE screen) {
   setCameraMat4(camera);
   clearBuffer(scene->background);
   clearZBuffer();
-  resetIteration(&scene->objects);
-  while((node = previousData(&scene->objects))) {
-    drawNode(node);
+  resetIteration(&scene->nodes);
+  while((node = previousData(&scene->nodes))) {
+    if(node->isInterface) {
+      clearCameraMat4();
+      drawNode(node);
+      setCameraMat4(camera);
+    } else {
+      drawNode(node);
+    }
     addVec3(node->position, node->velocity, node->position);
     clearVector(&node->collisionTargets);
     if(node->collisionMaskActive || node->collisionMaskPassive) {
       Node *collisionTarget;
-      VectorItem *item = scene->objects.currentItem;
-      while((collisionTarget = (Node*)previousData(&scene->objects))) {
+      VectorItem *item = scene->nodes.currentItem;
+      while((collisionTarget = (Node*)previousData(&scene->nodes))) {
         if(testCollision(*node, *collisionTarget)) {
           if(node->collisionMaskPassive & collisionTarget->collisionMaskActive || node->collisionMaskActive & collisionTarget->collisionMaskPassive) {
             push(&node->collisionTargets, collisionTarget);
@@ -51,17 +56,12 @@ void drawScene(Scene *scene, HANDLE screen) {
           }
         }
       }
-      scene->objects.currentItem = item;
+      scene->nodes.currentItem = item;
     }
   }
-  clearCameraMat4();
-  clearTransformation();
-  resetIteration(&scene->interfaces);
-  while((node = previousData(&scene->interfaces))) drawNode(node);
   flushBuffer(screen);
 }
 
 void discardScene(Scene *scene) {
-  clearVector(&scene->objects);
-  clearVector(&scene->interfaces);
+  clearVector(&scene->nodes);
 }

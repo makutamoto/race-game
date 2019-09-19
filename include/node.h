@@ -40,6 +40,7 @@ typedef struct {
 } IntervalEvent;
 
 Node initNode(const char *id, Image *image);
+Node initNodeUI(const char *id, Image *image, unsigned char color);
 void discardNode(Node node);
 
 void drawNode(Node *node);
