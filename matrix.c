@@ -2,6 +2,7 @@
 #include<math.h>
 
 #include "./include/matrix.h"
+#include "./include/borland.h"
 
 float dot2(const float a[2], const float b[2]) {
 	return a[0] * b[0] + a[1] * b[1];
@@ -31,17 +32,20 @@ float length3(const float vector[3]) {
 }
 
 float distance2(const float a[2], const float b[2]) {
-	float position[2] = { b[0] - a[0], b[1] - a[1] };
+	float position[2];
+	position[0] = b[0] - a[0];
+	position[1] = b[1] - a[1];
 	return length2(position);
 }
 
 float distancePoint2(const float point[2], const float vector[2]) {
 	float vectorLen = length2(vector);
-	if(vectorLen == 0.0F) return length2(point);
-	float projectedPointLen = dot2(point, vector) / vectorLen;
+	float projectedPointLen;
 	float projectedPoint[2];
-	normalize2(vector, projectedPoint);
 	float difference[2];
+	if(vectorLen == 0.0F) return length2(point);
+	projectedPointLen = dot2(point, vector) / vectorLen;
+	normalize2(vector, projectedPoint);
 	mulVec2ByScalar(projectedPoint, projectedPointLen, projectedPoint);
 	subVec2(point, projectedPoint, difference);
 	return length2(difference);
@@ -140,9 +144,16 @@ float angleVec2(const float vector[2]) {
 }
 
 float	(*mulMat3(const float a[3][3], const float b[3][3], float out[3][3]))[3] {
-	float b0[3] = { b[0][0], b[1][0], b[2][0] };
-	float b1[3] = { b[0][1], b[1][1], b[2][1] };
-	float b2[3] = { b[0][2], b[1][2], b[2][2] };
+	float b0[3], b1[3], b2[3];
+	b0[0] = b[0][0];
+	b0[1] = b[1][0];
+	b0[2] = b[2][0];
+	b1[0] = b[0][1];
+	b1[1] = b[1][1];
+	b1[2] = b[2][1];
+	b2[0] = b[0][2];
+	b2[1] = b[1][2];
+	b2[2] = b[2][2];
 	out[0][0] = dot3(a[0], b0);
 	out[0][1] = dot3(a[0], b1);
 	out[0][2] = dot3(a[0], b2);
@@ -156,10 +167,26 @@ float	(*mulMat3(const float a[3][3], const float b[3][3], float out[3][3]))[3] {
 }
 
 float	(*mulMat4(const float a[4][4], const float b[4][4], float out[4][4]))[4] {
-	float b0[4] = { b[0][0], b[1][0], b[2][0], b[3][0] };
-	float b1[4] = { b[0][1], b[1][1], b[2][1], b[3][1] };
-	float b2[4] = { b[0][2], b[1][2], b[2][2], b[3][2] };
-	float b3[4] = { b[0][3], b[1][3], b[2][3], b[3][3] };
+	float b0[4];
+	float b1[4];
+	float b2[4];
+	float b3[4];
+	b0[0] = b[0][0];
+	b0[1] = b[1][0];
+	b0[2] = b[2][0];
+	b0[3] = b[3][0];
+	b1[0] = b[0][1];
+	b1[1] = b[1][1];
+	b1[2] = b[2][1];
+	b1[3] = b[3][1];
+	b2[0] = b[0][2];
+	b2[1] = b[1][2];
+	b2[2] = b[2][2];
+	b2[3] = b[3][2];
+	b3[0] = b[0][3];
+	b3[1] = b[1][3];
+	b3[2] = b[2][3];
+	b3[3] = b[3][3];
 	out[0][0] = dot4(a[0], b0);
 	out[0][1] = dot4(a[0], b1);
 	out[0][2] = dot4(a[0], b2);

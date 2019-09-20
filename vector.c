@@ -3,12 +3,7 @@
 #include "./include/vector.h"
 
 Vector initVector(void) {
-	Vector vector = {
-		.length = 0,
-		.firstItem = NULL,
-		.currentItem = NULL,
-		.lastItem = NULL,
-	};
+	Vector vector = { 0 };
 	return vector;
 }
 
@@ -81,9 +76,10 @@ void* pop(Vector *vector) {
 }
 
 VectorItem* ItemAt(Vector vector, size_t index) {
-	if(vector.firstItem == NULL) return NULL;
-	VectorItem *currentItem = vector.firstItem;
 	size_t i;
+	VectorItem *currentItem;
+	if(vector.firstItem == NULL) return NULL;
+	currentItem = vector.firstItem;
 	for(i = 0;i < index;i++) {
 		if(currentItem->nextItem == NULL) return NULL;
 		currentItem = currentItem->nextItem;
@@ -99,8 +95,9 @@ void* dataAt(Vector vector, size_t index) {
 
 int insertAt(Vector *vector, size_t index, void *data) {
 	if(vector->firstItem  == NULL) {
+		VectorItem *newItem;
 		if(index != 0) return FALSE;
-		VectorItem *newItem = (VectorItem*)malloc(sizeof(VectorItem));
+		newItem = (VectorItem*)malloc(sizeof(VectorItem));
 		newItem->previousItem = NULL;
 		newItem->nextItem = NULL;
 		newItem->data = data;
@@ -148,12 +145,14 @@ void removeByData(Vector *vector, void *data) {
 	void *currentData;
 	size_t index = 0;
 	resetIteration(vector);
-	while((currentData = nextData(vector))) {
+	currentData = nextData(vector);
+	while(currentData) {
 		if(currentData == data) {
 			removeAt(vector, index);
 		} else {
 			index += 1;
 		}
+		currentData = nextData(vector);
 	}
 }
 

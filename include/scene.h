@@ -22,6 +22,8 @@ typedef struct {
   Camera camera;
 } Scene;
 
+Camera initCamera(float x, float y, float z, float aspect);
+
 Scene initScene(void);
 void drawScene(Scene *scene, HANDLE screen);
 void discardScene(Scene *scene);

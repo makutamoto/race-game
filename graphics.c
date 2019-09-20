@@ -1,9 +1,13 @@
 #include<stdio.h>
 #include<float.h>
-#include<stdint.h>
 #include<math.h>
 #include<Windows.h>
 
+#ifndef __BORLANDC__
+#include<stdint.h>
+#endif
+
+#include "./include/borland.h"
 #include "./include/matrix.h"
 #include "./include/graphics.h"
 #include "./include/bitmap.h"
@@ -70,6 +74,17 @@ void flushBuffer(HANDLE screen) {
 	free(data);
 }
 
+Vertex initVertex(float x, float y, float z, unsigned char color) {
+	Vertex vertex;
+	vertex.components[0] = x;
+	vertex.components[1] = y;
+	vertex.components[2] = z;
+	vertex.components[3] = 1.0F;
+	vertex.color = color;
+
+	return vertex;
+}
+
 void pushTransformation(void) {
 	float *store = malloc(16 * sizeof(float));
 	memcpy_s(store, sizeof(transformation), transformation, sizeof(transformation));
@@ -99,19 +114,19 @@ void clearCameraMat4(void) {
 
 void translateTransformation(float dx, float dy, float dz) {
 	float temp1[4][4], temp2[4][4];
-	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(transformation));
+	memcpy_s(temp2, sizeof(transformation), transformation, sizeof(transformation));
 	mulMat4(temp2, genTranslationMat4(dx, dy, dz, temp1), transformation);
 }
 
 void scaleTransformation(float sx, float sy, float sz) {
 	float temp1[4][4], temp2[4][4];
-	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(transformation));
+	memcpy_s(temp2, sizeof(transformation), transformation, sizeof(transformation));
 	mulMat4(temp2, genScaleMat4(sx, sy, sz, temp1), transformation);
 }
 
 void rotateTransformation(float rx, float ry, float rz) {
 	float temp1[4][4], temp2[4][4];
-	memcpy_s(temp2, sizeof(temp2), transformation, sizeof(transformation));
+	memcpy_s(temp2, sizeof(transformation), transformation, sizeof(transformation));
 	mulMat4(temp2, genRotationMat4(rx, ry, rz, temp1), transformation);
 }
 
@@ -130,7 +145,7 @@ float (*getAABB(float out[3][2]))[2] {
 	return out;
 }
 
-static inline float edgeFunction(float x, float y, const float a[2], const float b[2]) {
+static float edgeFunction(float x, float y, const float a[2], const float b[2]) {
 	return (a[0] - b[0]) * (y - a[1]) - (a[1] - b[1]) * (x - a[0]);
 }
 
@@ -141,6 +156,7 @@ void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]) {
 	unsigned int maxCoord[2], minCoord[2];
 	float area;
 	float aspect = (float)screenSize[0] / screenSize[1];
+	unsigned int y, x;
 	mulMat4Vec4(transformation, vertices[0].components, transformedTemp[0]);
 	mulMat4Vec4(transformation, vertices[1].components, transformedTemp[1]);
 	mulMat4Vec4(transformation, vertices[2].components, transformedTemp[2]);
@@ -190,11 +206,12 @@ void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]) {
 	transformed[1][1] = roundf(transformed[1][1] * halfScreenSize[1] + halfScreenSize[1]);
 	transformed[2][0] = roundf(transformed[2][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
 	transformed[2][1] = roundf(transformed[2][1]  * halfScreenSize[1] + halfScreenSize[1]);
-	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), screenSize[0]), 0);
-	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), screenSize[1]), 0);
+	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), (int)screenSize[0]), 0);
+	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), (int)screenSize[1]), 0);
 	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
 	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
 	area = edgeFunction(transformed[0][0], transformed[0][1], transformed[1], transformed[2]);
+	if(area == 0.0F) return;
 	if(image == NULL) {
 		vertexColors[0] = vertices[0].color * transformed[0][3];
 		vertexColors[1] = vertices[1].color * transformed[1][3];
@@ -207,9 +224,7 @@ void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]) {
 		textures[2][0] = uv[2][0] * transformed[2][3];
 		textures[2][1] = uv[2][1] * transformed[2][3];
 	}
-	unsigned int y;
 	for(y = minCoord[1];y < maxCoord[1];y++) {
-		unsigned int x;
 		for(x = minCoord[0];x < maxCoord[0];x++) {
 			float weights[3];
 			weights[0] = edgeFunction(x + 0.5F, y + 0.5F, transformed[1], transformed[2]);
@@ -279,6 +294,7 @@ Image loadBitmap(char *fileName, unsigned char transparent) {
 	BitmapHeader header;
 	BitmapInfoHeader infoHeader;
 	uint32_t *img;
+	unsigned int y;
 	if(fopen_s(&file, fileName, "rb")) {
 		fprintf(stderr, "Failed to open the file '%s'\n", fileName);
 		fclose(file);
@@ -329,7 +345,6 @@ Image loadBitmap(char *fileName, unsigned char transparent) {
 	image.height = (unsigned int)infoHeader.height;
 	image.transparent = transparent;
 	image.data = (unsigned char*)malloc(image.width * image.height);
-	unsigned int y;
 	for(y = 0;y < image.height;y++) {
 		unsigned int x;
 		for(x = 0;x < image.width;x++) {
@@ -351,6 +366,7 @@ Image loadBitmap(char *fileName, unsigned char transparent) {
 
 Image genRect(unsigned int width, unsigned int height, unsigned char color) {
 	Image image;
+	unsigned int y;
 	image.data = (unsigned char*)malloc(width * height);
 	if(image.data == NULL) {
 		image.width = 0;
@@ -362,7 +378,6 @@ Image genRect(unsigned int width, unsigned int height, unsigned char color) {
 	image.width = width;
 	image.height = height;
 	image.transparent = NULL_COLOR;
-  unsigned int y;
 	for(y = 0;y < image.height;y++) {
     unsigned int x;
     for(x = 0;x < image.width;x++) image.data[image.width * y + x] = color;
@@ -373,6 +388,7 @@ Image genRect(unsigned int width, unsigned int height, unsigned char color) {
 Image genCircle(unsigned int radius, unsigned char color) {
 	Image image;
 	unsigned int edgeWidth = 2 * radius;
+	unsigned int y;
 	image.data = malloc(edgeWidth * edgeWidth);
 	if(image.data == NULL) {
 		image.width = 0;
@@ -384,7 +400,6 @@ Image genCircle(unsigned int radius, unsigned char color) {
 	image.width = edgeWidth;
 	image.height = edgeWidth;
 	image.transparent = color ^ 0x0F;
-	unsigned int y;
 	for(y = 0;y < edgeWidth;y++) {
 		unsigned int x;
 		for(x = 0;x < edgeWidth;x++) {

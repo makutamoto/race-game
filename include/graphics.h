@@ -23,6 +23,8 @@ void clearBuffer(unsigned char color);
 void clearZBuffer(void);
 void flushBuffer(HANDLE screen);
 
+Vertex initVertex(float x, float y, float z, unsigned char color);
+
 void pushTransformation(void);
 void popTransformation(void);
 void clearTransformation(void);

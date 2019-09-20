@@ -4,6 +4,7 @@
 #include<time.h>
 
 #include "./include/node.h"
+#include "./include/borland.h"
 #include "./include/graphics.h"
 #include "./include/vector.h"
 
@@ -11,7 +12,8 @@
 #define OBJ_WORD_BUFFER_SIZE 32
 
 Node initNode(const char *id, Image *image) {
-  Node node = {};
+  Node node;
+  memset(&node, 0, sizeof(Node));
   memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
 	node.scale[0] = 1.0;
 	node.scale[1] = 1.0;
@@ -22,7 +24,8 @@ Node initNode(const char *id, Image *image) {
 }
 
 Node initNodeUI(const char *id, Image *image, unsigned char color) {
-  Node node = {};
+  Node node;
+  memset(&node, 0, sizeof(Node));
   memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
 	node.scale[0] = 1.0;
 	node.scale[1] = 1.0;
@@ -46,17 +49,19 @@ void drawNode(Node *node) {
     if(!node->behaviour(node)) return;
   }
   resetIteration(&node->intervalEvents);
-  while((interval = nextData(&node->intervalEvents))) {
+  interval = nextData(&node->intervalEvents);
+  while(interval) {
     clock_t current = clock();
     clock_t diff = current - interval->begin;
     if(diff < 0) {
       interval->begin = current;
     } else {
-      if(interval->interval < diff) {
+      if(interval->interval < (unsigned int)diff) {
         interval->begin = current;
         if(!interval->callback(node)) return;
       }
     }
+    interval = nextData(&node->intervalEvents);
   }
 	pushTransformation();
   if(node->isInterface) {
@@ -66,7 +71,11 @@ void drawNode(Node *node) {
   }
   rotateTransformation(node->angle[0], node->angle[1], node->angle[2]);
   resetIteration(&node->children);
-  while((child = previousData(&node->children))) drawNode(child);
+  child = previousData(&node->children);
+  while(child) {
+    drawNode(child);
+    child = previousData(&node->children);
+  }
   if(node->isInterface) {
     scaleTransformation(node->scale[0] / 50.0F, node->scale[1] / 50.0F, 1.0F);
   } else {
@@ -96,19 +105,20 @@ Shape initShapePlane(float width, float height, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
-  Shape shape = {
-    initVector(), initVector(), initVector(), initVector()
-  };
+  Shape shape;
   static unsigned long generated_indices[] = { 0, 1, 2, 1, 3, 2 };
-  Vertex generated_vertices[] = {
-    { { -halfWidth, -halfHeight, 0.0F, 1.0F }, color },
-    { { halfWidth, -halfHeight, 0.0F, 1.0F }, color },
-    { { -halfWidth, halfHeight, 0.0F, 1.0F }, color },
-    { { halfWidth, halfHeight, 0.0F, 1.0F }, color },
-  };
+  Vertex generated_vertices[4];
   float generated_uv[][2] = {
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
   };
+  generated_vertices[0] = initVertex(-halfWidth, -halfHeight, 0.0F, color);
+  generated_vertices[1] = initVertex(halfWidth, -halfHeight, 0.0F, color);
+  generated_vertices[2] = initVertex(-halfWidth, halfHeight, 0.0F, color);
+  generated_vertices[3] = initVertex(halfWidth, halfHeight, 0.0F, color);
+  shape.indices = initVector();
+  shape.vertices = initVector();
+  shape.uv = initVector();
+  shape.uvIndices = initVector();
   for(i = 0;i < 6;i++) {
     unsigned long *index = malloc(sizeof(unsigned long));
     unsigned long *uvIndex = malloc(sizeof(unsigned long));
@@ -133,19 +143,20 @@ Shape initShapePlaneInv(float width, float height, unsigned char color) {
   int i;
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
-  Shape shape = {
-    initVector(), initVector(), initVector(), initVector()
-  };
+  Shape shape;
   static unsigned long generated_indices[] = { 0, 1, 2, 1, 3, 2 };
-  Vertex generated_vertices[] = {
-    { { -halfWidth, -halfHeight, 0.0F, 1.0F }, color },
-    { { -halfWidth, halfHeight, 0.0F, 1.0F }, color },
-    { { halfWidth, -halfHeight, 0.0F, 1.0F }, color },
-    { { halfWidth, halfHeight, 0.0F, 1.0F }, color },
-  };
+  Vertex generated_vertices[4];
   float generated_uv[][2] = {
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
   };
+  shape.indices = initVector();
+  shape.vertices = initVector();
+  shape.uv = initVector();
+  shape.uvIndices = initVector();
+  generated_vertices[0] = initVertex(-halfWidth, -halfHeight, 0.0F, color);
+  generated_vertices[1] = initVertex(-halfWidth, halfHeight, 0.0F, color);
+  generated_vertices[2] = initVertex(halfWidth, -halfHeight, 0.0F, color);
+  generated_vertices[3] = initVertex(halfWidth, halfHeight, 0.0F, color);
   for(i = 0;i < 6;i++) {
     unsigned long *index = malloc(sizeof(unsigned long));
     unsigned long *uvIndex = malloc(sizeof(unsigned long));
@@ -171,45 +182,13 @@ Shape initShapeBox(float width, float height, float depth, unsigned char color) 
   float halfWidth = width / 2.0F;
   float halfHeight = height / 2.0F;
   float halfDepth = depth / 2.0F;
-  Shape shape = {
-    initVector(), initVector(), initVector(), initVector()
-  };
+  Shape shape;
   static unsigned long generated_indices[] = {
     0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6,
     8, 9, 10, 9, 11, 10, 12, 13, 14, 13, 15, 14,
     16, 17, 18, 17, 19, 18, 20, 21, 22, 21, 23, 22,
   };
-  Vertex generated_vertices[] = {
-    { { -halfWidth, -halfHeight, halfDepth, 1.0F }, color },
-    { { -halfWidth, halfHeight, halfDepth, 1.0F }, color },
-    { { halfWidth, -halfHeight, halfDepth, 1.0F }, color },
-    { { halfWidth, halfHeight, halfDepth, 1.0F }, color },
-
-    { { -halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
-    { { halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
-    { { -halfWidth, halfHeight, -halfDepth, 1.0F }, color },
-    { { halfWidth, halfHeight, -halfDepth, 1.0F }, color },
-
-    { { halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
-    { { halfWidth, -halfHeight, halfDepth, 1.0F }, color },
-    { { halfWidth, halfHeight, -halfDepth, 1.0F }, color },
-    { { halfWidth, halfHeight, halfDepth, 1.0F }, color },
-
-    { { -halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
-    { { -halfWidth, halfHeight, -halfDepth, 1.0F }, color },
-    { { -halfWidth, -halfHeight, halfDepth, 1.0F }, color },
-    { { -halfWidth, halfHeight, halfDepth, 1.0F }, color },
-
-    { { -halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
-    { { -halfWidth, -halfHeight, halfDepth, 1.0F }, color },
-    { { halfWidth, -halfHeight, -halfDepth, 1.0F }, color },
-    { { halfWidth, -halfHeight, halfDepth, 1.0F }, color },
-
-    { { -halfWidth, halfHeight, -halfDepth, 1.0F }, color },
-    { { halfWidth, halfHeight, -halfDepth, 1.0F }, color },
-    { { -halfWidth, halfHeight, halfDepth, 1.0F }, color },
-    { { halfWidth, halfHeight, halfDepth, 1.0F }, color },
-  };
+  Vertex generated_vertices[24];
   float generated_uv[][2] = {
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
     { 0.0F, 0.0F }, { 1.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 1.0F },
@@ -218,6 +197,34 @@ Shape initShapeBox(float width, float height, float depth, unsigned char color) 
     { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
     { 0.0F, 0.0F }, { 1.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 1.0F },
   };
+  shape.indices = initVector();
+  shape.vertices = initVector();
+  shape.uv = initVector();
+  shape.uvIndices = initVector();
+  generated_vertices[0] = initVertex(-halfWidth, -halfHeight, halfDepth, color);
+  generated_vertices[1] = initVertex(-halfWidth, halfHeight, halfDepth, color);
+  generated_vertices[2] = initVertex(halfWidth, -halfHeight, halfDepth, color);
+  generated_vertices[3] = initVertex(halfWidth, halfHeight, halfDepth, color);
+  generated_vertices[4] = initVertex(-halfWidth, -halfHeight, -halfDepth, color);
+  generated_vertices[5] = initVertex(halfWidth, -halfHeight, -halfDepth, color);
+  generated_vertices[6] = initVertex(-halfWidth, halfHeight, -halfDepth, color);
+  generated_vertices[7] = initVertex(halfWidth, halfHeight, -halfDepth, color);
+  generated_vertices[8] = initVertex(halfWidth, -halfHeight, -halfDepth, color);
+  generated_vertices[9] = initVertex(halfWidth, -halfHeight, halfDepth, color);
+  generated_vertices[10] = initVertex(halfWidth, halfHeight, -halfDepth, color);
+  generated_vertices[11] = initVertex(halfWidth, halfHeight, halfDepth, color);
+  generated_vertices[12] = initVertex(-halfWidth, -halfHeight, -halfDepth, color);
+  generated_vertices[13] = initVertex(-halfWidth, halfHeight, -halfDepth, color);
+  generated_vertices[14] = initVertex(-halfWidth, -halfHeight, halfDepth, color);
+  generated_vertices[15] = initVertex(-halfWidth, halfHeight, halfDepth, color);
+  generated_vertices[16] = initVertex(-halfWidth, -halfHeight, -halfDepth, color);
+  generated_vertices[17] = initVertex(-halfWidth, -halfHeight, halfDepth, color);
+  generated_vertices[18] = initVertex(halfWidth, -halfHeight, -halfDepth, color);
+  generated_vertices[19] = initVertex(halfWidth, -halfHeight, halfDepth, color);
+  generated_vertices[20] = initVertex(-halfWidth, halfHeight, -halfDepth, color);
+  generated_vertices[21] = initVertex(halfWidth, halfHeight, -halfDepth, color);
+  generated_vertices[22] = initVertex(-halfWidth, halfHeight, halfDepth, color);
+  generated_vertices[23] = initVertex(halfWidth, halfHeight, halfDepth, color);
   for(i = 0;i < 36;i++) {
     unsigned long *index = malloc(sizeof(unsigned long));
     unsigned long *uvIndex = malloc(sizeof(unsigned long));
@@ -277,7 +284,7 @@ int initShapeFromObj(Shape *shape, char *filename) {
   while(fgets(buffer, OBJ_LINE_BUFFER_SIZE, file)) {
     int i;
     size_t index = 0;
-    size_t old_index = 0;
+    size_t old_index;
     index = getUntil(buffer, ' ', index, temp, OBJ_WORD_BUFFER_SIZE);
     if(strcmp(temp, "v") == 0) {
       Vertex *vertex = calloc(sizeof(Vertex), 1);
@@ -349,7 +356,7 @@ int initShapeFromObj(Shape *shape, char *filename) {
           } else {
             faceIndices[i] -= 1;
           }
-          index2 = getUntil(temp, '/', index2, temp2, OBJ_WORD_BUFFER_SIZE);
+          getUntil(temp, '/', index2, temp2, OBJ_WORD_BUFFER_SIZE);
           if(temp2[0] == '\0') {
             faceUVIndices[i] = 0;
           } else {

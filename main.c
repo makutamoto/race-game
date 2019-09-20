@@ -1,9 +1,9 @@
 #include<stdio.h>
 #include<math.h>
-#include<stdint.h>
 #include<Windows.h>
 #include<time.h>
 
+#include "./include/borland.h"
 #include "./include/matrix.h"
 #include "./include/graphics.h"
 #include "./include/colors.h"
@@ -11,9 +11,9 @@
 #include "./include/node.h"
 #include "./include/vector.h"
 
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
+#ifndef __BORLANDC__
 #pragma comment(lib, "Winmm.lib")
+#endif
 
 #define NOF_MAX_EVENTS 10
 #define HALF_FIELD_SIZE 100.0F
@@ -21,7 +21,6 @@
 #define HERO_BULLET_COLLISIONMASK 0x01
 #define ENEMY_BULLET_COLLISIONMASK 0x02
 
-static HWND window;
 static HANDLE input;
 static HANDLE screen;
 static INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
@@ -50,13 +49,8 @@ static Node stageNode;
 static void initScreen(short width, short height) {
 	CONSOLE_CURSOR_INFO info = { 1, FALSE };
 	COORD bufferSize;
-	CONSOLE_FONT_INFOEX font = { .cbSize = sizeof(CONSOLE_FONT_INFOEX) };
 	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 	SetConsoleActiveScreenBuffer(screen);
-	GetCurrentConsoleFontEx(screen, FALSE, &font);
-	font.dwFontSize.X = 3;
-	font.dwFontSize.Y = 5;
-	SetCurrentConsoleFontEx(screen, FALSE, &font);
 	bufferSize.X = 2 * width;
 	bufferSize.Y = height;
 	SetConsoleScreenBufferSize(screen, bufferSize);
@@ -144,11 +138,9 @@ static int heroBehaviour(Node *node) {
 }
 
 static void initialize(void) {
-	window = GetConsoleWindow();
 	input = GetStdHandle(STD_INPUT_HANDLE);
-	initScreen(200, 200);
-	initGraphics(200, 200);
-	// lifeBar = genRect(5, 1, RED);
+	initScreen(128, 128);
+	initGraphics(128, 128);
 	hero = loadBitmap("assets/hero3d.bmp", NULL_COLOR);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", NULL_COLOR);
@@ -180,14 +172,16 @@ static void initialize(void) {
 }
 
 static BOOL pollEvents(void) {
+	int i;
 	DWORD nofEvents;
+	KEY_EVENT_RECORD *keyEvent;
 	GetNumberOfConsoleInputEvents(input, &nofEvents);
 	if(nofEvents == 0) return TRUE;
 	ReadConsoleInput(input, inputRecords, NOF_MAX_EVENTS, &nofEvents);
-	for(int i = 0;i < (int)nofEvents;i += 1) {
+	for(i = 0;i < (int)nofEvents;i += 1) {
 		switch(inputRecords[i].EventType) {
 			case KEY_EVENT:
-			KEY_EVENT_RECORD *keyEvent = &inputRecords[i].Event.KeyEvent;
+			keyEvent = &inputRecords[i].Event.KeyEvent;
 			if(keyEvent->bKeyDown) {
 				switch(keyEvent->wVirtualKeyCode) {
 					case 'Q': return FALSE;

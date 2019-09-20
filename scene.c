@@ -6,19 +6,27 @@
 #include "./include/matrix.h"
 #include "./include/graphics.h"
 
+Camera initCamera(float x, float y, float z, float aspect) {
+  Camera camera;
+  memset(&camera, 0, sizeof(Camera));
+  camera.position[0] = x;
+  camera.position[1] = y;
+  camera.position[2] = z;
+  camera.worldUp[0] = 0.0F;
+  camera.worldUp[1] = 1.0F;
+  camera.worldUp[2] = 0.0F;
+  camera.fov = PI / 3.0F * 2.0F;
+  camera.nearLimit = 10.0F;
+  camera.farLimit = 500.0F;
+  camera.aspect = aspect;
+  return camera;
+}
+
 Scene initScene(void) {
-  Scene scene = {
-    .nodes = initVector(),
-    .camera = {
-      .position = { 0.0F, -100.0F, -100.0F },
-      .target = { 0.0F, 0.0F, 0.0F },
-      .worldUp = { 0.0F, 1.0F, 0.0F },
-      .fov = PI / 3.0F * 2.0F,
-      .nearLimit = 10.0F,
-      .farLimit = 500.0F,
-      .aspect = 1.0F,
-    },
-  };
+  Scene scene;
+  memset(&scene, 0, sizeof(Scene));
+  scene.nodes = initVector();
+  scene.camera = initCamera(0.0F, -100.0F, -100.0F, 1.0F);
   return scene;
 }
 
@@ -35,7 +43,8 @@ void drawScene(Scene *scene, HANDLE screen) {
   clearBuffer(scene->background);
   clearZBuffer();
   resetIteration(&scene->nodes);
-  while((node = previousData(&scene->nodes))) {
+  node = previousData(&scene->nodes);
+  while(node) {
     if(node->isInterface) {
       clearCameraMat4();
       drawNode(node);
@@ -48,16 +57,19 @@ void drawScene(Scene *scene, HANDLE screen) {
     if(node->collisionMaskActive || node->collisionMaskPassive) {
       Node *collisionTarget;
       VectorItem *item = scene->nodes.currentItem;
-      while((collisionTarget = (Node*)previousData(&scene->nodes))) {
+      collisionTarget = (Node*)previousData(&scene->nodes);
+      while(collisionTarget) {
         if(testCollision(*node, *collisionTarget)) {
           if(node->collisionMaskPassive & collisionTarget->collisionMaskActive || node->collisionMaskActive & collisionTarget->collisionMaskPassive) {
             push(&node->collisionTargets, collisionTarget);
             push(&collisionTarget->collisionTargets, node);
           }
         }
+        collisionTarget = (Node*)previousData(&scene->nodes);
       }
       scene->nodes.currentItem = item;
     }
+    node = previousData(&scene->nodes);
   }
   flushBuffer(screen);
 }

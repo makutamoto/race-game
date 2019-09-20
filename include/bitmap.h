@@ -1,6 +1,12 @@
 #ifndef BITMAP_H
 #define BITMAP_H
 
+#include "./borland.h"
+
+#ifndef __BORLANDC__
+#include<stdint.h>
+#endif
+
 #pragma pack(1)
 
 typedef struct _BitmapHeader {
