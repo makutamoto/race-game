@@ -21,7 +21,7 @@ typedef struct _Node {
 	float angle[3];
 	float scale[3];
 	float aabb[3][2];
-	Image *texture;
+	Image texture;
 	Shape shape;
 	unsigned int collisionMaskActive;
 	unsigned int collisionMaskPassive;
@@ -30,7 +30,8 @@ typedef struct _Node {
 	struct _Node *parent;
 	Vector children;
 	int (*behaviour)(struct _Node*);
-	int isInterface;
+	BOOL isInterface;
+	void *data;
 }	Node;
 
 typedef struct {
@@ -39,11 +40,11 @@ typedef struct {
 	int (*callback)(Node*);
 } IntervalEvent;
 
-Node initNode(const char *id, Image *image);
-Node initNodeUI(const char *id, Image *image, unsigned char color);
+Node initNode(const char *id, Image image);
+Node initNodeUI(const char *id, Image image, unsigned char color);
 void discardNode(Node node);
 
-void drawNode(Node *node);
+BOOL drawNode(Node *node);
 int testCollision(Node a, Node b);
 void addIntervalEvent(Node *node, unsigned int milliseconds, int (*callback)(Node*));
 

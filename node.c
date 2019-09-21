@@ -11,7 +11,7 @@
 #define OBJ_LINE_BUFFER_SIZE 128
 #define OBJ_WORD_BUFFER_SIZE 32
 
-Node initNode(const char *id, Image *image) {
+Node initNode(const char *id, Image image) {
   Node node;
   memset(&node, 0, sizeof(Node));
   memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
@@ -23,7 +23,7 @@ Node initNode(const char *id, Image *image) {
   return node;
 }
 
-Node initNodeUI(const char *id, Image *image, unsigned char color) {
+Node initNodeUI(const char *id, Image image, unsigned char color) {
   Node node;
   memset(&node, 0, sizeof(Node));
   memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
@@ -41,12 +41,12 @@ void discardNode(Node node) {
   freeVector(&node.children);
 }
 
-void drawNode(Node *node) {
+BOOL drawNode(Node *node) {
   Node *child;
   IntervalEvent *interval;
 
   if(node->behaviour != NULL) {
-    if(!node->behaviour(node)) return;
+    if(!node->behaviour(node)) return FALSE;
   }
   resetIteration(&node->intervalEvents);
   interval = nextData(&node->intervalEvents);
@@ -58,7 +58,7 @@ void drawNode(Node *node) {
     } else {
       if(interval->interval < (unsigned int)diff) {
         interval->begin = current;
-        if(!interval->callback(node)) return;
+        if(!interval->callback(node)) return FALSE;
       }
     }
     interval = nextData(&node->intervalEvents);
@@ -70,13 +70,9 @@ void drawNode(Node *node) {
     translateTransformation(node->position[0], node->position[1], node->position[2]);
   }
   rotateTransformation(node->angle[0], node->angle[1], node->angle[2]);
-  resetIteration(&node->children);
-  child = previousData(&node->children);
-  while(child) {
-    drawNode(child);
-    child = previousData(&node->children);
-  }
+  pushTransformation();
   if(node->isInterface) {
+    clearCameraMat4();
     scaleTransformation(node->scale[0] / 50.0F, node->scale[1] / 50.0F, 1.0F);
   } else {
     scaleTransformation(node->scale[0], node->scale[1], node->scale[2]);
@@ -85,6 +81,15 @@ void drawNode(Node *node) {
 	fillPolygons(node->shape.vertices, node->shape.indices, node->texture, node->shape.uv, node->shape.uvIndices);
   getAABB(node->aabb);
   popTransformation();
+  resetIteration(&node->children);
+  child = previousData(&node->children);
+  while(child) {
+    drawNode(child);
+    child = previousData(&node->children);
+  }
+  popTransformation();
+
+  return TRUE;
 }
 
 int testCollision(Node a, Node b) {
@@ -109,7 +114,7 @@ Shape initShapePlane(float width, float height, unsigned char color) {
   static unsigned long generated_indices[] = { 0, 1, 2, 1, 3, 2 };
   Vertex generated_vertices[4];
   float generated_uv[][2] = {
-    { 0.0F, 0.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 1.0F, 1.0F },
+    { 1.0F, 1.0F }, { 0.0F, 1.0F }, { 1.0F, 0.0F }, { 0.0F, 0.0F },
   };
   generated_vertices[0] = initVertex(-halfWidth, -halfHeight, 0.0F, color);
   generated_vertices[1] = initVertex(halfWidth, -halfHeight, 0.0F, color);

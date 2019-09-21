@@ -17,6 +17,8 @@ typedef struct {
 	unsigned char *data;
 } Image;
 
+extern Image NO_IMAGE;
+
 void initGraphics(unsigned int width, unsigned int height);
 void deinitGraphics(void);
 void clearBuffer(unsigned char color);
@@ -37,9 +39,10 @@ void rotateTransformation(float rx, float ry, float rz);
 void clearAABB(void);
 float (*getAABB(float out[3][2]))[2];
 
-void fillTriangle(Vertex vertices[3], Image *image, float *uv[3]);
-void fillPolygons(Vector vertices, Vector indices, Image *image, Vector uv, Vector uvIndices);
+void fillTriangle(Vertex vertices[3], Image image, float *uv[3]);
+void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices);
 
+Image cropImage(Image image, unsigned int width, unsigned int height, unsigned int xth, unsigned int yth);
 Image loadBitmap(char *fileName, unsigned char transparent);
 Image genRect(unsigned int width, unsigned int height, unsigned char color);
 Image genCircle(unsigned int rad, unsigned char color);

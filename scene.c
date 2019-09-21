@@ -26,7 +26,7 @@ Scene initScene(void) {
   Scene scene;
   memset(&scene, 0, sizeof(Scene));
   scene.nodes = initVector();
-  scene.camera = initCamera(0.0F, -100.0F, -100.0F, 1.0F);
+  scene.camera = initCamera(0.0F, 0.0F, 0.0F, 1.0F);
   return scene;
 }
 
@@ -39,18 +39,15 @@ void drawScene(Scene *scene, HANDLE screen) {
   genLookAtMat4(scene->camera.position, scene->camera.target, scene->camera.worldUp, lookAt);
   genPerspectiveMat4(scene->camera.fov, scene->camera.nearLimit, scene->camera.farLimit, scene->camera.aspect, projection);
   mulMat4(projection, lookAt, camera);
-  setCameraMat4(camera);
   clearBuffer(scene->background);
   clearZBuffer();
   resetIteration(&scene->nodes);
   node = previousData(&scene->nodes);
   while(node) {
-    if(node->isInterface) {
-      clearCameraMat4();
-      drawNode(node);
-      setCameraMat4(camera);
-    } else {
-      drawNode(node);
+    setCameraMat4(camera);
+    if(!drawNode(node)) {
+      node = previousData(&scene->nodes);
+      continue;
     }
     addVec3(node->position, node->velocity, node->position);
     clearVector(&node->collisionTargets);
