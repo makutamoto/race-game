@@ -41,28 +41,8 @@ void discardNode(Node node) {
   freeVector(&node.children);
 }
 
-BOOL drawNode(Node *node) {
+void drawNode(Node *node) {
   Node *child;
-  IntervalEvent *interval;
-
-  if(node->behaviour != NULL) {
-    if(!node->behaviour(node)) return FALSE;
-  }
-  resetIteration(&node->intervalEvents);
-  interval = nextData(&node->intervalEvents);
-  while(interval) {
-    clock_t current = clock();
-    clock_t diff = current - interval->begin;
-    if(diff < 0) {
-      interval->begin = current;
-    } else {
-      if(interval->interval < (unsigned int)diff) {
-        interval->begin = current;
-        if(!interval->callback(node)) return FALSE;
-      }
-    }
-    interval = nextData(&node->intervalEvents);
-  }
 	pushTransformation();
   if(node->isInterface) {
     translateTransformation((node->position[0] + node->scale[0] / 2.0F) / 50.0F - 1.0F, (node->position[1] + node->scale[1] / 2.0F) / 50.0F - 1.0F, 0.0F);
@@ -88,8 +68,6 @@ BOOL drawNode(Node *node) {
     child = previousData(&node->children);
   }
   popTransformation();
-
-  return TRUE;
 }
 
 int testCollision(Node a, Node b) {
@@ -98,7 +76,7 @@ int testCollision(Node a, Node b) {
          (a.aabb[2][0] <= b.aabb[2][1] && a.aabb[2][1] >= b.aabb[2][0]);
 }
 
-void addIntervalEvent(Node *node, unsigned int milliseconds, int (*callback)(Node*)) {
+void addIntervalEvent(Node *node, unsigned int milliseconds, void (*callback)(Node*)) {
   IntervalEvent *interval = malloc(sizeof(IntervalEvent));
   interval->begin = clock();
   interval->interval = milliseconds * CLOCKS_PER_SEC / 1000;

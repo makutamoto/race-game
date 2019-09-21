@@ -42,29 +42,64 @@ void drawScene(Scene *scene, HANDLE screen) {
   clearBuffer(scene->background);
   clearZBuffer();
   resetIteration(&scene->nodes);
-  node = previousData(&scene->nodes);
+  node = nextData(&scene->nodes);
   while(node) {
     setCameraMat4(camera);
-    if(!drawNode(node)) {
-      node = previousData(&scene->nodes);
-      continue;
-    }
-    addVec3(node->position, node->velocity, node->position);
+    drawNode(node);
     clearVector(&node->collisionTargets);
+    node->collisionFlags = 0;
+    node = nextData(&scene->nodes);
+  }
+  resetIteration(&scene->nodes);
+  node = nextData(&scene->nodes);
+  while(node) {
+    addVec3(node->position, node->velocity, node->position);
     if(node->collisionMaskActive || node->collisionMaskPassive) {
       Node *collisionTarget;
       VectorItem *item = scene->nodes.currentItem;
-      collisionTarget = (Node*)previousData(&scene->nodes);
+      collisionTarget = (Node*)nextData(&scene->nodes);
       while(collisionTarget) {
         if(testCollision(*node, *collisionTarget)) {
-          if(node->collisionMaskPassive & collisionTarget->collisionMaskActive || node->collisionMaskActive & collisionTarget->collisionMaskPassive) {
+          unsigned int flagsA = node->collisionMaskPassive & collisionTarget->collisionMaskActive;
+          unsigned int flagsB = node->collisionMaskActive & collisionTarget->collisionMaskPassive;
+          unsigned int flags = flagsA | flagsB;
+          if(flags) {
             push(&node->collisionTargets, collisionTarget);
             push(&collisionTarget->collisionTargets, node);
+            node->collisionFlags |= flags;
+            collisionTarget->collisionFlags |= flags;
           }
         }
-        collisionTarget = (Node*)previousData(&scene->nodes);
+        collisionTarget = (Node*)nextData(&scene->nodes);
       }
       scene->nodes.currentItem = item;
+    }
+    node = nextData(&scene->nodes);
+  }
+  resetIteration(&scene->nodes);
+  node = previousData(&scene->nodes);
+  while(node) {
+    IntervalEvent *interval;
+    if(node->behaviour != NULL) {
+      if(!node->behaviour(node)) {
+        node = previousData(&scene->nodes);
+        continue;
+      }
+    }
+    resetIteration(&node->intervalEvents);
+    interval = nextData(&node->intervalEvents);
+    while(interval) {
+      clock_t current = clock();
+      clock_t diff = current - interval->begin;
+      if(diff < 0) {
+        interval->begin = current;
+      } else {
+        if(interval->interval < (unsigned int)diff) {
+          interval->begin = current;
+          interval->callback(node);
+        }
+      }
+      interval = nextData(&node->intervalEvents);
     }
     node = previousData(&scene->nodes);
   }

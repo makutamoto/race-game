@@ -1,4 +1,5 @@
 #include<stdio.h>
+#include<float.h>
 #include<math.h>
 
 #include "./include/matrix.h"
@@ -219,10 +220,17 @@ float* mulMat4Vec4(const float mat[4][4], const float vec[4], float out[4]) {
 	out[2] = dot4(mat[2], vec);
 	out[3] = dot4(mat[3], vec);
 	if(out[3] != 1.0F) {
-		out[0] /= out[3];
-		out[1] /= out[3];
-		out[2] /= out[3];
-		out[3] = 1.0F;
+		if(out[3] == 0.0F) {
+			out[0] = FLT_MAX;
+			out[1] = FLT_MAX;
+			out[2] = FLT_MAX;
+			out[3] = FLT_MAX;
+		} else {
+			out[0] /= out[3];
+			out[1] /= out[3];
+			out[2] /= out[3];
+			out[3] = 1.0F;
+		}
 	}
 	return out;
 }
@@ -233,10 +241,17 @@ float* mulMat4Vec4Proj(const float mat[4][4], const float vec[4], float out[4]) 
 	out[2] = dot4(mat[2], vec);
 	out[3] = dot4(mat[3], vec);
 	if(out[3] != 1.0F) {
-		out[0] /= out[3];
-		out[1] /= out[3];
-		out[2] /= out[3];
-		out[3] = 1.0F / out[3];
+		if(out[3] == 0.0F) {
+			out[0] = FLT_MAX;
+			out[1] = FLT_MAX;
+			out[2] = FLT_MAX;
+			out[3] = FLT_MAX;
+		} else {
+			out[0] /= out[3];
+			out[1] /= out[3];
+			out[2] /= out[3];
+			out[3] = 1.0F / out[3];
+		}
 	}
 	return out;
 }
@@ -464,7 +479,7 @@ float (*genLookAtMat4(float position[3], float target[3], float worldUp[3], floa
 	float look[4][4] = { { 0.0F } };
 	float move[4][4] = { { 0.0F } };
 	normalize3(subVec3(position, target, direction), direction);
-	normalize3(cross(worldUp, direction, right), right);
+	normalize3(cross(direction, worldUp, right), right);
 	cross(direction, right, up);
 	look[0][0] = right[0];
 	look[0][1] = right[1];

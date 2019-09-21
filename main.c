@@ -16,10 +16,10 @@
 #endif
 
 #define NOF_MAX_EVENTS 10
-#define HALF_FIELD_SIZE 100.0F
 
 #define HERO_BULLET_COLLISIONMASK 0x01
 #define ENEMY_BULLET_COLLISIONMASK 0x02
+#define OBSTACLE_COLLISIONMASK 0x04
 
 static HANDLE input;
 static HANDLE screen;
@@ -36,12 +36,14 @@ static Image hero;
 static Image heroBullet;
 static Image enemy1;
 static Image stage;
+static Image stoneImage;
 static Image gameoverImage;
 
 static Shape enemy1Shape;
 static Shape enemyLifeShape;
 static Shape heroBulletShape;
 static Shape enemyBulletShape;
+static Shape stoneShape;
 
 static Node lifeBarNode;
 static Scene scene;
@@ -79,7 +81,7 @@ static void initScreen(short width, short height) {
 }
 
 static int bulletBehaviour(Node *node) {
-	if(node->collisionTargets.length > 0 || distance2(heroNode.position, node->position) > 500) {
+	if(node->collisionFlags || distance2(heroNode.position, node->position) > 500) {
 		removeByData(&scene.nodes, node);
 		free(node);
 		return FALSE;
@@ -103,7 +105,7 @@ static void shootBullet(const char *name, Shape shape, const float position[3], 
 }
 
 static int enemy1Behaviour(Node *node) {
-	if(node->collisionTargets.length > 0) {
+	if(node->collisionFlags & HERO_BULLET_COLLISIONMASK) {
 		Enemy1 *enemy = node->data;
 		enemy->hp -= 1;
 		enemy->bar->texture = cropImage(lifeBarBunch, 192, 32, 0, 10 * enemy->hp / 3);
@@ -113,18 +115,16 @@ static int enemy1Behaviour(Node *node) {
 			return FALSE;
 		}
 	}
-	node->position[2] -= 0.1F;
 	return TRUE;
 }
 
-static int enemy1BehaviourInterval(Node *node) {
+static void enemy1BehaviourInterval(Node *node) {
 	shootBullet("enemyBullet", enemyBulletShape, node->position, PI / 4.0F * 3.0F, ENEMY_BULLET_COLLISIONMASK);
 	shootBullet("enemyBullet", enemyBulletShape, node->position, PI, ENEMY_BULLET_COLLISIONMASK);
 	shootBullet("enemyBullet", enemyBulletShape, node->position, PI / 4.0F * 5.0F, ENEMY_BULLET_COLLISIONMASK);
-	return TRUE;
 }
 
-static Node* spawnEnemy1(float x, float y, float z) {
+static void spawnEnemy1(float x, float y, float z) {
 	Node *enemy = malloc(sizeof(Node));
 	Node *bar = malloc(sizeof(Node));
 	Enemy1 *data = malloc(sizeof(Enemy1));
@@ -136,9 +136,11 @@ static Node* spawnEnemy1(float x, float y, float z) {
 	enemy->position[0] = x;
 	enemy->position[1] = y;
 	enemy->position[2] = z;
+	enemy->velocity[2] = -0.5F;
 	enemy->scale[0] = 32.0F;
 	enemy->scale[1] = 32.0F;
 	enemy->scale[2] = 32.0F;
+	enemy->collisionMaskActive = OBSTACLE_COLLISIONMASK;
 	enemy->collisionMaskPassive = HERO_BULLET_COLLISIONMASK;
 	enemy->behaviour = enemy1Behaviour;
 	enemy->data = data;
@@ -146,21 +148,36 @@ static Node* spawnEnemy1(float x, float y, float z) {
 	bar->shape = enemyLifeShape;
 	bar->position[1] = -16.0F;
 	push(&enemy->children, bar);
-	// push(&scene.nodes, bar);
 	push(&scene.nodes, enemy);
-	return enemy;
+}
+
+static void spawnStone(float x, float y, float z) {
+	Node *stone = malloc(sizeof(Node));
+	*stone = initNode("stone", stoneImage);
+	stone->shape = stoneShape;
+	stone->position[0] = x;
+	stone->position[1] = y;
+	stone->position[2] = z;
+	stone->velocity[2] = -1.0F;
+	stone->scale[0] = 50.0F;
+	stone->scale[1] = 50.0F;
+	stone->scale[2] = 10.0F;
+	stone->collisionMaskActive = OBSTACLE_COLLISIONMASK;
+	stone->collisionMaskPassive = HERO_BULLET_COLLISIONMASK | ENEMY_BULLET_COLLISIONMASK;
+	push(&scene.nodes, stone);
 }
 
 static int heroBehaviour(Node *node) {
 	float move[2];
-	if(node->collisionTargets.length > 0) {
-		heroHP -= 1;
+	if(node->collisionFlags) {
+		if(node->collisionFlags & ENEMY_BULLET_COLLISIONMASK) heroHP -= 1;
+		if(node->collisionFlags & OBSTACLE_COLLISIONMASK) heroHP = 0;
 		lifeBarNode.texture = cropImage(lifeBarBunch, 192, 32, 0, heroHP);
 	}
-	addVec2(node->position, mulVec2ByScalar(controller.move, 1.0F, move), node->position);
-	node->position[0] = max(min(node->position[0], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
-	node->position[1] = max(min(node->position[1], HALF_FIELD_SIZE), -HALF_FIELD_SIZE);
-	node->angle[1] = angleVec2(controller.direction) + PI / 2.0F;
+	mulVec2ByScalar(controller.move, 2.0F, move);
+	addVec2(node->position, move, node->position);
+	node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
+	node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
 	if(controller.action) {
 		shootBullet("heroBullet", heroBulletShape, node->position, node->angle[1], HERO_BULLET_COLLISIONMASK);
 		controller.action = FALSE;
@@ -177,11 +194,13 @@ static void initialize(void) {
 	hero = loadBitmap("assets/hero3d.bmp", NULL_COLOR);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", NULL_COLOR);
+	stoneImage = loadBitmap("assets/stone.bmp", NULL_COLOR);
 	stage = loadBitmap("assets/stage.bmp", NULL_COLOR);
 	scene = initScene();
-	scene.camera = initCamera(0.0F, -100.0F, -100.0F, 1.0F);
+	scene.camera = initCamera(0.0F, 0.0F, -100.0F, 1.0F);
 	scene.background = BLUE;
 	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj");
+	initShapeFromObj(&stoneShape, "./assets/stone.obj");
 	enemyLifeShape = initShapePlane(20, 5, RED);
 	heroBulletShape = initShapeBox(5, 5, 30, YELLOW);
 	enemyBulletShape = initShapeBox(5, 5, 30, MAGENTA);
@@ -195,15 +214,11 @@ static void initialize(void) {
 	lifeBarNode.scale[1] = 5.0F;
 	heroNode = initNode("Hero", hero);
 	initShapeFromObj(&heroNode.shape, "./assets/hero.obj");
-	heroHP = 10;
 	heroNode.scale[0] = 32.0F;
 	heroNode.scale[1] = 32.0F;
 	heroNode.scale[2] = 32.0F;
-	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK;
+	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK | OBSTACLE_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
-	push(&scene.nodes, &lifeBarNode);
-	push(&scene.nodes, &heroNode);
-	push(&scene.nodes, &stageNode);
 
 	gameoverScene = initScene();
 	gameoverImage = loadBitmap("assets/gameover.bmp", NULL_COLOR);
@@ -211,6 +226,23 @@ static void initialize(void) {
 	gameoverNode.scale[0] = 100.0F;
 	gameoverNode.scale[1] = 100.0F;
 	push(&gameoverScene.nodes, &gameoverNode);
+}
+
+static void startGame(void) {
+	heroHP = 10;
+	lifeBarNode.texture = cropImage(lifeBarBunch, 192, 32, 0, 10);
+	heroNode.position[0] = 0.0F;
+	heroNode.position[1] = 0.0F;
+	heroNode.position[2] = 0.0F;
+
+	clearVector(&scene.nodes);
+	push(&scene.nodes, &lifeBarNode);
+	push(&scene.nodes, &heroNode);
+	push(&scene.nodes, &stageNode);
+	spawnEnemy1(0.0F, 100.0F, 500.0F);
+	spawnEnemy1(0.0F, -100.0F, 500.0F);
+	spawnStone(0.0F, 0.0F, 500.0F);
+	// add bricks.
 }
 
 static BOOL pollEvents(void) {
@@ -228,16 +260,16 @@ static BOOL pollEvents(void) {
 				switch(keyEvent->wVirtualKeyCode) {
 					case 'Q': return FALSE;
 					case 'W':
-						controller.move[1] = -1.0F;
-						break;
-					case 'S':
 						controller.move[1] = 1.0F;
 						break;
+					case 'S':
+						controller.move[1] = -1.0F;
+						break;
 					case 'A':
-						controller.move[0] = 1.0F;
+						controller.move[0] = -1.0F;
 						break;
 					case 'D':
-						controller.move[0] = -1.0F;
+						controller.move[0] = 1.0F;
 						break;
 					case 'R':
 						controller.retry = TRUE;
@@ -298,12 +330,14 @@ static void deinitialize(void) {
 	discardShape(enemyLifeShape);
 	discardShape(heroBulletShape);
 	discardShape(enemyBulletShape);
+	discardShape(stoneShape);
 	discardNode(lifeBarNode);
 	discardNode(heroNode);
 	discardNode(stageNode);
 	freeImage(lifeBarBunch);
 	freeImage(hero);
 	freeImage(heroBullet);
+	freeImage(stoneImage);
 	freeImage(gameoverImage);
 	discardScene(&scene);
 	discardScene(&gameoverScene);
@@ -312,23 +346,15 @@ static void deinitialize(void) {
 
 int main(void) {
 	initialize();
-
-
-	spawnEnemy1(0.0F, 0.0F, 500.0F);
-
-
+	startGame();
 	while(TRUE) {
 		if(!pollEvents()) break;
 		if(heroHP > 0) {
-			scene.camera.target[0] = heroNode.position[0];
-			scene.camera.target[1] = heroNode.position[1];
+			scene.camera.target[0] = heroNode.position[0] / 2.0F;
 			drawScene(&scene, screen);
 		} else {
 			drawScene(&gameoverScene, screen);
-			if(controller.retry) {
-				lifeBarNode.texture = cropImage(lifeBarBunch, 192, 32, 0, 10);
-				heroHP = 10;
-			}
+			if(controller.retry) startGame();
 		}
 	}
 	deinitialize();
