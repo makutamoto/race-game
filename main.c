@@ -49,8 +49,18 @@ static Node stageNode;
 static void initScreen(short width, short height) {
 	CONSOLE_CURSOR_INFO info = { 1, FALSE };
 	COORD bufferSize;
+	#ifndef __BORLANDC__
+	CONSOLE_FONT_INFOEX font = { sizeof(CONSOLE_FONT_INFOEX) };
+	#endif
 	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 	SetConsoleActiveScreenBuffer(screen);
+	#ifndef __BORLANDC__
+	GetCurrentConsoleFontEx(screen, FALSE, &font);
+	font.dwFontSize.X = 1;
+	font.dwFontSize.Y = 2;
+	SetCurrentConsoleFontEx(screen, FALSE, &font);
+	// Specify font family.
+	#endif
 	bufferSize.X = 2 * width;
 	bufferSize.Y = height;
 	SetConsoleScreenBufferSize(screen, bufferSize);
