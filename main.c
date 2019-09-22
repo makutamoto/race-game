@@ -39,12 +39,14 @@ static Image enemy1;
 static Image stage;
 static Image stoneImage;
 static Image gameoverImage;
+static Image explosionImage;
 
 static Shape enemy1Shape;
 static Shape enemyLifeShape;
 static Shape heroBulletShape;
 static Shape enemyBulletShape;
 static Shape stoneShape;
+static Shape explosionShape;
 
 static Node lifeBarNode;
 static Scene scene;
@@ -54,6 +56,11 @@ static Node stageNode;
 static Node gameoverNode;
 
 static unsigned int heroHP;
+
+typedef struct {
+	int i;
+	float dx;
+} Explosion;
 
 typedef struct {
 	unsigned int hp;
@@ -81,8 +88,40 @@ static void initScreen(short width, short height) {
 	SetConsoleCursorInfo(screen, &info);
 }
 
+static void explosionInterval(Node *node) {
+	Explosion *explosion = node->data;
+	if(explosion->i < 5) {
+		node->scale[0] += explosion->dx;
+		node->scale[1] += explosion->dx;
+		node->scale[2] += explosion->dx;
+		explosion->i += 1;
+	} else {
+		removeByData(&scene.nodes, node);
+		free(node);
+	}
+}
+
+static void causeExplosion(float position[3], float radius) {
+	Node *explosionNode = malloc(sizeof(Node));
+	Explosion *explosion = calloc(sizeof(Explosion), 1);
+	*explosionNode = initNode("explosion", explosionImage);
+	explosionNode->shape = explosionShape;
+	explosionNode->velocity[2] = -100.0F;
+	explosionNode->position[0] = position[0];
+	explosionNode->position[1] = position[1];
+	explosionNode->position[2] = position[2];
+	explosionNode->scale[0] = 0.0F;
+	explosionNode->scale[1] = 0.0F;
+	explosionNode->scale[2] = 0.0F;
+	explosionNode->data = explosion;
+	explosion->dx = radius / 5.0F;
+	addIntervalEventNode(explosionNode, 100, explosionInterval);
+	push(&scene.nodes, explosionNode);
+	PlaySound(TEXT("./assets/se_maoudamashii_retro12.wav"), NULL, SND_ASYNC | SND_FILENAME);
+}
+
 static int bulletBehaviour(Node *node) {
-	if(node->collisionFlags || distance2(heroNode.position, node->position) > 500 || node->position[2] < 0.0F) {
+	if(node->collisionFlags || distance2(heroNode.position, node->position) > 500 || node->position[2] < -100.0F) {
 		removeByData(&scene.nodes, node);
 		free(node);
 		return FALSE;
@@ -106,7 +145,7 @@ static void shootBullet(const char *name, Shape shape, const float position[3], 
 }
 
 static int enemy1Behaviour(Node *node) {
-	if(node->position[2] < 0.0F) {
+	if(node->position[2] < -100.0F) {
 		removeByData(&scene.nodes, node);
 		free(node);
 		return FALSE;
@@ -114,8 +153,9 @@ static int enemy1Behaviour(Node *node) {
 	if(node->collisionFlags & HERO_BULLET_COLLISIONMASK) {
 		Enemy1 *enemy = node->data;
 		enemy->hp -= 1;
-		enemy->bar->texture = cropImage(lifeBarBunch, 192, 32, 0, 10 * enemy->hp / 3);
+		enemy->bar->texture = cropImage(lifeBarBunch, 192, 32, 0, 10 * enemy->hp / 1);
 		if(enemy->hp <= 0) {
+			causeExplosion(node->position, 50.0F);
 			removeByData(&scene.nodes, node);
 			free(node);
 			return FALSE;
@@ -134,16 +174,16 @@ static void spawnEnemy1(float x, float y, float z) {
 	Enemy1 *data = malloc(sizeof(Enemy1));
 	*enemy = initNode("Enemy1", enemy1);
 	*bar = initNode("EnemyLifeBar", cropImage(lifeBarBunch, 192, 32, 0, 10));
-	data->hp = 3;
+	data->hp = 1;
 	data->bar = bar;
 	enemy->shape = enemy1Shape;
 	enemy->position[0] = x;
 	enemy->position[1] = y;
 	enemy->position[2] = z;
-	enemy->velocity[2] = -50.0F;
-	enemy->scale[0] = 32.0F;
-	enemy->scale[1] = 32.0F;
-	enemy->scale[2] = 32.0F;
+	enemy->velocity[2] = -100.0F;
+	enemy->scale[0] = 50.0F;
+	enemy->scale[1] = 50.0F;
+	enemy->scale[2] = 50.0F;
 	enemy->collisionMaskActive = OBSTACLE_COLLISIONMASK;
 	enemy->collisionMaskPassive = HERO_BULLET_COLLISIONMASK;
 	enemy->behaviour = enemy1Behaviour;
@@ -156,7 +196,7 @@ static void spawnEnemy1(float x, float y, float z) {
 }
 
 static int stoneBehaviour(Node *node) {
-	if(node->position[2] < 0.0F) {
+	if(node->position[2] < -100.0F) {
 		removeByData(&scene.nodes, node);
 		free(node);
 		return FALSE;
@@ -187,6 +227,7 @@ static int heroBehaviour(Node *node) {
 		if(node->collisionFlags & ENEMY_BULLET_COLLISIONMASK) heroHP -= 1;
 		if(node->collisionFlags & OBSTACLE_COLLISIONMASK) heroHP = 0;
 		lifeBarNode.texture = cropImage(lifeBarBunch, 192, 32, 0, heroHP);
+		if(heroHP <= 0) PlaySound(TEXT("./assets/se_maoudamashii_retro12.wav"), NULL, SND_ASYNC | SND_FILENAME);
 	}
 	mulVec2ByScalar(controller.move, 200.0F, move);
 	node->velocity[0] = move[0];
@@ -206,9 +247,15 @@ static int heroBehaviour(Node *node) {
 }
 
 static void sceneInterval() {
-	spawnEnemy1(0.0F, 100.0F, 500.0F);
-	spawnEnemy1(0.0F, -100.0F, 500.0F);
-	spawnStone(0.0F, 0.0F, 500.0F);
+	float x = (float)rand() / RAND_MAX;
+	float y = (float)rand() / RAND_MAX;
+	spawnStone(200.0F * x - 100.0F, 200.0F * y - 100.0F, 500.0F);
+	spawnEnemy1(-200.0F * x + 100.0F, 200.0F * y - 100.0F, 500.0F);
+	if(rand() > RAND_MAX / 2) {
+		spawnStone(-200.0F * x + 100.0F, -200.0F * y + 100.0F, 500.0F);
+	} else {
+		spawnEnemy1(-200.0F * x + 100.0F, -200.0F * y + 100.0F, 500.0F);
+	}
 }
 
 static void initialize(void) {
@@ -221,12 +268,14 @@ static void initialize(void) {
 	enemy1 = loadBitmap("assets/enemy1.bmp", NULL_COLOR);
 	stoneImage = loadBitmap("assets/stone.bmp", NULL_COLOR);
 	stage = loadBitmap("assets/stage.bmp", NULL_COLOR);
+	explosionImage = loadBitmap("./assets/explosion.bmp", NULL_COLOR);
 	scene = initScene();
 	scene.camera = initCamera(0.0F, 0.0F, -100.0F, 1.0F);
 	scene.background = BLUE;
 	addIntervalEventScene(&scene, 5000, sceneInterval);
 	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj");
 	initShapeFromObj(&stoneShape, "./assets/stone.obj");
+	initShapeFromObj(&explosionShape, "./assets/explosion.obj");
 	enemyLifeShape = initShapePlane(20, 5, RED);
 	heroBulletShape = initShapeBox(5, 5, 30, YELLOW);
 	enemyBulletShape = initShapeBox(5, 5, 30, MAGENTA);
@@ -260,6 +309,8 @@ static void startGame(void) {
 	heroNode.position[0] = 0.0F;
 	heroNode.position[1] = 0.0F;
 	heroNode.position[2] = 0.0F;
+
+	srand(0);
 
 	clearVector(&scene.nodes);
 	push(&scene.nodes, &lifeBarNode);
@@ -354,6 +405,7 @@ static void deinitialize(void) {
 	discardShape(heroBulletShape);
 	discardShape(enemyBulletShape);
 	discardShape(stoneShape);
+	discardShape(explosionShape);
 	discardNode(lifeBarNode);
 	discardNode(heroNode);
 	discardNode(stageNode);
@@ -362,6 +414,7 @@ static void deinitialize(void) {
 	freeImage(heroBullet);
 	freeImage(stoneImage);
 	freeImage(gameoverImage);
+	freeImage(explosionImage);
 	discardScene(&scene);
 	discardScene(&gameoverScene);
 	deinitGraphics();
@@ -375,7 +428,6 @@ int main(void) {
 	while(TRUE) {
 		if(!pollEvents()) break;
 		if(heroHP > 0) {
-			scene.camera.target[0] = heroNode.position[0] / 2.0F;
 			drawScene(&scene, screen);
 		} else {
 			drawScene(&gameoverScene, screen);
