@@ -2,6 +2,7 @@
 #define SCENE_H
 
 #include<Windows.h>
+#include<time.h>
 
 #include "../include/node.h"
 #include "../include/vector.h"
@@ -20,11 +21,21 @@ typedef struct {
   Vector nodes;
   unsigned char background;
   Camera camera;
+  clock_t previousClock;
+  Vector intervalEvents;
 } Scene;
+
+typedef struct {
+	clock_t begin;
+	unsigned int interval;
+	void (*callback)(Scene*);
+} IntervalEventScene;
 
 Camera initCamera(float x, float y, float z, float aspect);
 
 Scene initScene(void);
+void addIntervalEventScene(Scene *scene, unsigned int milliseconds, void (*callback)(Scene*));
+void resetSceneClock(Scene *scene);
 void drawScene(Scene *scene, HANDLE screen);
 void discardScene(Scene *scene);
 

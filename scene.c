@@ -1,4 +1,5 @@
 #include<Windows.h>
+#include<time.h>
 
 #include "./include/scene.h"
 #include "./include/node.h"
@@ -30,11 +31,24 @@ Scene initScene(void) {
   return scene;
 }
 
+void addIntervalEventScene(Scene *scene, unsigned int milliseconds, void (*callback)(Scene*)) {
+  IntervalEventScene *interval = malloc(sizeof(IntervalEventScene));
+  interval->begin = clock();
+  interval->interval = milliseconds * CLOCKS_PER_SEC / 1000;
+  interval->callback = callback;
+  push(&scene->intervalEvents, interval);
+}
+
+void resetSceneClock(Scene *scene) {
+  scene->previousClock = clock();
+}
+
 void drawScene(Scene *scene, HANDLE screen) {
   Node *node;
   float lookAt[4][4];
   float projection[4][4];
   float camera[4][4];
+  IntervalEventScene *intervalScene;
   clearTransformation();
   genLookAtMat4(scene->camera.position, scene->camera.target, scene->camera.worldUp, lookAt);
   genPerspectiveMat4(scene->camera.fov, scene->camera.nearLimit, scene->camera.farLimit, scene->camera.aspect, projection);
@@ -53,7 +67,10 @@ void drawScene(Scene *scene, HANDLE screen) {
   resetIteration(&scene->nodes);
   node = nextData(&scene->nodes);
   while(node) {
-    addVec3(node->position, node->velocity, node->position);
+    float elapsed = (float)(clock() - scene->previousClock) / CLOCKS_PER_SEC;
+    float x[3];
+    mulVec3ByScalar(node->velocity, elapsed, x);
+    addVec3(node->position, x, node->position);
     if(node->collisionMaskActive || node->collisionMaskPassive) {
       Node *collisionTarget;
       VectorItem *item = scene->nodes.currentItem;
@@ -79,7 +96,7 @@ void drawScene(Scene *scene, HANDLE screen) {
   resetIteration(&scene->nodes);
   node = previousData(&scene->nodes);
   while(node) {
-    IntervalEvent *interval;
+    IntervalEventNode *interval;
     if(node->behaviour != NULL) {
       if(!node->behaviour(node)) {
         node = previousData(&scene->nodes);
@@ -103,7 +120,23 @@ void drawScene(Scene *scene, HANDLE screen) {
     }
     node = previousData(&scene->nodes);
   }
+  resetIteration(&scene->intervalEvents);
+  intervalScene = nextData(&scene->intervalEvents);
+  while(intervalScene) {
+    clock_t current = clock();
+    clock_t diff = current - intervalScene->begin;
+    if(diff < 0) {
+      intervalScene->begin = current;
+    } else {
+      if(intervalScene->interval < (unsigned int)diff) {
+        intervalScene->begin = current;
+        intervalScene->callback(scene);
+      }
+    }
+    intervalScene = nextData(&scene->intervalEvents);
+  }
   flushBuffer(screen);
+  scene->previousClock = clock();
 }
 
 void discardScene(Scene *scene) {

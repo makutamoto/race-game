@@ -76,8 +76,8 @@ int testCollision(Node a, Node b) {
          (a.aabb[2][0] <= b.aabb[2][1] && a.aabb[2][1] >= b.aabb[2][0]);
 }
 
-void addIntervalEvent(Node *node, unsigned int milliseconds, void (*callback)(Node*)) {
-  IntervalEvent *interval = malloc(sizeof(IntervalEvent));
+void addIntervalEventNode(Node *node, unsigned int milliseconds, void (*callback)(Node*)) {
+  IntervalEventNode *interval = malloc(sizeof(IntervalEventNode));
   interval->begin = clock();
   interval->interval = milliseconds * CLOCKS_PER_SEC / 1000;
   interval->callback = callback;

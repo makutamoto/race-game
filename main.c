@@ -15,6 +15,7 @@
 #pragma comment(lib, "Winmm.lib")
 #endif
 
+#define FRAME_PER_SECOND 60
 #define NOF_MAX_EVENTS 10
 
 #define HERO_BULLET_COLLISIONMASK 0x01
@@ -81,7 +82,7 @@ static void initScreen(short width, short height) {
 }
 
 static int bulletBehaviour(Node *node) {
-	if(node->collisionFlags || distance2(heroNode.position, node->position) > 500) {
+	if(node->collisionFlags || distance2(heroNode.position, node->position) > 500 || node->position[2] < 0.0F) {
 		removeByData(&scene.nodes, node);
 		free(node);
 		return FALSE;
@@ -93,8 +94,8 @@ static void shootBullet(const char *name, Shape shape, const float position[3], 
 	Node *bullet = malloc(sizeof(Node));
 	*bullet = initNode(name, NO_IMAGE);
 	bullet->shape = shape;
-	bullet->velocity[0] = 4.0F * cosf(angle - PI / 2.0F);
-	bullet->velocity[2] = -4.0F * sinf(angle - PI / 2.0F);
+	bullet->velocity[0] = 400.0F * cosf(angle - PI / 2.0F);
+	bullet->velocity[2] = -400.0F * sinf(angle - PI / 2.0F);
 	bullet->angle[1] = angle;
 	bullet->position[0] = position[0];
 	bullet->position[1] = position[1];
@@ -105,6 +106,11 @@ static void shootBullet(const char *name, Shape shape, const float position[3], 
 }
 
 static int enemy1Behaviour(Node *node) {
+	if(node->position[2] < 0.0F) {
+		removeByData(&scene.nodes, node);
+		free(node);
+		return FALSE;
+	}
 	if(node->collisionFlags & HERO_BULLET_COLLISIONMASK) {
 		Enemy1 *enemy = node->data;
 		enemy->hp -= 1;
@@ -119,9 +125,7 @@ static int enemy1Behaviour(Node *node) {
 }
 
 static void enemy1BehaviourInterval(Node *node) {
-	shootBullet("enemyBullet", enemyBulletShape, node->position, PI / 4.0F * 3.0F, ENEMY_BULLET_COLLISIONMASK);
 	shootBullet("enemyBullet", enemyBulletShape, node->position, PI, ENEMY_BULLET_COLLISIONMASK);
-	shootBullet("enemyBullet", enemyBulletShape, node->position, PI / 4.0F * 5.0F, ENEMY_BULLET_COLLISIONMASK);
 }
 
 static void spawnEnemy1(float x, float y, float z) {
@@ -136,7 +140,7 @@ static void spawnEnemy1(float x, float y, float z) {
 	enemy->position[0] = x;
 	enemy->position[1] = y;
 	enemy->position[2] = z;
-	enemy->velocity[2] = -0.5F;
+	enemy->velocity[2] = -50.0F;
 	enemy->scale[0] = 32.0F;
 	enemy->scale[1] = 32.0F;
 	enemy->scale[2] = 32.0F;
@@ -144,11 +148,20 @@ static void spawnEnemy1(float x, float y, float z) {
 	enemy->collisionMaskPassive = HERO_BULLET_COLLISIONMASK;
 	enemy->behaviour = enemy1Behaviour;
 	enemy->data = data;
-	addIntervalEvent(enemy, 1000, enemy1BehaviourInterval);
+	addIntervalEventNode(enemy, 1000, enemy1BehaviourInterval);
 	bar->shape = enemyLifeShape;
 	bar->position[1] = -16.0F;
 	push(&enemy->children, bar);
 	push(&scene.nodes, enemy);
+}
+
+static int stoneBehaviour(Node *node) {
+	if(node->position[2] < 0.0F) {
+		removeByData(&scene.nodes, node);
+		free(node);
+		return FALSE;
+	}
+	return TRUE;
 }
 
 static void spawnStone(float x, float y, float z) {
@@ -158,10 +171,11 @@ static void spawnStone(float x, float y, float z) {
 	stone->position[0] = x;
 	stone->position[1] = y;
 	stone->position[2] = z;
-	stone->velocity[2] = -1.0F;
+	stone->velocity[2] = -100.0F;
 	stone->scale[0] = 50.0F;
 	stone->scale[1] = 50.0F;
 	stone->scale[2] = 10.0F;
+	stone->behaviour = stoneBehaviour;
 	stone->collisionMaskActive = OBSTACLE_COLLISIONMASK;
 	stone->collisionMaskPassive = HERO_BULLET_COLLISIONMASK | ENEMY_BULLET_COLLISIONMASK;
 	push(&scene.nodes, stone);
@@ -174,16 +188,27 @@ static int heroBehaviour(Node *node) {
 		if(node->collisionFlags & OBSTACLE_COLLISIONMASK) heroHP = 0;
 		lifeBarNode.texture = cropImage(lifeBarBunch, 192, 32, 0, heroHP);
 	}
-	mulVec2ByScalar(controller.move, 2.0F, move);
-	addVec2(node->position, move, node->position);
+	mulVec2ByScalar(controller.move, 200.0F, move);
+	node->velocity[0] = move[0];
+	node->velocity[1] = move[1];
 	node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
 	node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
 	if(controller.action) {
-		shootBullet("heroBullet", heroBulletShape, node->position, node->angle[1], HERO_BULLET_COLLISIONMASK);
-		controller.action = FALSE;
-		PlaySound(TEXT("assets/laser.wav"), NULL, SND_ASYNC | SND_FILENAME);
+		static clock_t previousClock;
+		if((clock() - previousClock) * 1000 / CLOCKS_PER_SEC > 500) {
+			shootBullet("heroBullet", heroBulletShape, node->position, node->angle[1], HERO_BULLET_COLLISIONMASK);
+			controller.action = FALSE;
+			PlaySound(TEXT("assets/laser.wav"), NULL, SND_ASYNC | SND_FILENAME);
+			previousClock = clock();
+		}
 	}
 	return TRUE;
+}
+
+static void sceneInterval() {
+	spawnEnemy1(0.0F, 100.0F, 500.0F);
+	spawnEnemy1(0.0F, -100.0F, 500.0F);
+	spawnStone(0.0F, 0.0F, 500.0F);
 }
 
 static void initialize(void) {
@@ -199,6 +224,7 @@ static void initialize(void) {
 	scene = initScene();
 	scene.camera = initCamera(0.0F, 0.0F, -100.0F, 1.0F);
 	scene.background = BLUE;
+	addIntervalEventScene(&scene, 5000, sceneInterval);
 	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj");
 	initShapeFromObj(&stoneShape, "./assets/stone.obj");
 	enemyLifeShape = initShapePlane(20, 5, RED);
@@ -239,10 +265,7 @@ static void startGame(void) {
 	push(&scene.nodes, &lifeBarNode);
 	push(&scene.nodes, &heroNode);
 	push(&scene.nodes, &stageNode);
-	spawnEnemy1(0.0F, 100.0F, 500.0F);
-	spawnEnemy1(0.0F, -100.0F, 500.0F);
-	spawnStone(0.0F, 0.0F, 500.0F);
-	// add bricks.
+	resetSceneClock(&scene);
 }
 
 static BOOL pollEvents(void) {
@@ -345,8 +368,10 @@ static void deinitialize(void) {
 }
 
 int main(void) {
+	clock_t previousClock;
 	initialize();
 	startGame();
+	previousClock = clock();
 	while(TRUE) {
 		if(!pollEvents()) break;
 		if(heroHP > 0) {
@@ -356,6 +381,8 @@ int main(void) {
 			drawScene(&gameoverScene, screen);
 			if(controller.retry) startGame();
 		}
+		while(clock() - previousClock < CLOCKS_PER_SEC / FRAME_PER_SECOND);
+		previousClock = clock();
 	}
 	deinitialize();
 	return 0;

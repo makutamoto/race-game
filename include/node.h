@@ -39,7 +39,7 @@ typedef struct {
 	clock_t begin;
 	unsigned int interval;
 	void (*callback)(Node*);
-} IntervalEvent;
+} IntervalEventNode;
 
 Node initNode(const char *id, Image image);
 Node initNodeUI(const char *id, Image image, unsigned char color);
@@ -47,7 +47,7 @@ void discardNode(Node node);
 
 void drawNode(Node *node);
 int testCollision(Node a, Node b);
-void addIntervalEvent(Node *node, unsigned int milliseconds, void (*callback)(Node*));
+void addIntervalEventNode(Node *node, unsigned int milliseconds, void (*callback)(Node*));
 
 Shape initShapePlane(float width, float height, unsigned char color);
 Shape initShapePlaneInv(float width, float height, unsigned char color);
