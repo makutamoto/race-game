@@ -33,6 +33,16 @@ static unsigned int currentStore = 0;
 int aabbClear = TRUE;
 static float aabbTemp[3][2];
 
+FontSJIS initFontSJIS(Image font0201, Image font0208, unsigned int width0201, unsigned int width0208, unsigned int height) {
+	FontSJIS font;
+	font.font0201 = font0201;
+	font.font0208 = font0208;
+	font.height = height;
+	font.width[0] = width0201;
+	font.width[1] = width0208;
+	return font;
+}
+
 void initGraphics(unsigned int width, unsigned int height) {
 	bufferSize[0] = 2 * width;
 	bufferSize[1] = height;
@@ -251,7 +261,7 @@ void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
 					} else {
 						dataCoords[0] = depth * (textures[0][0] * weights[0] + textures[1][0] * weights[1] + textures[2][0] * weights[2]);
 						dataCoords[1] =	depth * (textures[0][1] * weights[0] + textures[1][1] * weights[1] + textures[2][1] * weights[2]);
-						color = image.data[image.width * min((unsigned int)(roundf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(roundf(image.width * dataCoords[0])), image.width - 1)];
+						color = image.data[image.width * min((unsigned int)(floorf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(floorf(image.width * dataCoords[0])), image.width - 1)];
 						if(color != image.transparent) {
 							buffer[index] = color;
 							zBuffer[index] = depth;
@@ -290,22 +300,89 @@ void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vecto
 	}
 }
 
-Image cropImage(Image image, unsigned int width, unsigned int height, unsigned int xth, unsigned int yth) {
-	Image cropped;
-	if(width > image.width || height > image.height) {
-		fputs("cropImage: the cropped size is bigger than original size.", stderr);
-		return image;
-	}
-	if(xth >= image.width / width || yth >= image.height / height) {
-		fputs("cropImage: the position is out of range.", stderr);
-		return image;
-	}
-	cropped.width = width;
-	cropped.height = height;
-	cropped.transparent = image.transparent;
-	cropped.data = image.data + image.width * height * yth + width * xth;
+Image initImage(unsigned int width, unsigned int height, unsigned char color, unsigned char transparent) {
+	Image image;
+	size_t imageSize = width * height;
+	image.width = width;
+	image.height = height;
+	image.transparent = transparent;
+	image.data = malloc(imageSize);
+	memset(image.data, color, imageSize);
 
-	return cropped;
+	return image;
+}
+
+void cropImage(Image dest, Image src, unsigned int xth, unsigned int yth) {
+	size_t ix, iy;
+	unsigned int x = dest.width * xth;
+	unsigned int y = dest.height * yth;
+	if(dest.width > src.width || dest.height > src.height) {
+		fputs("cropImage: the cropped size is bigger than original size.", stderr);
+	}
+	if(xth >= src.width / dest.width || yth >= src.height / dest.height) {
+		fputs("cropImage: the position is out of range.", stderr);
+	}
+	for(iy = 0;iy + y < src.height && iy < dest.height;iy++) {
+		for(ix = 0;ix + x < src.width && ix < dest.width;ix++) {
+			dest.data[dest.width * iy + ix] = src.data[src.width * (iy + y) + ix + x];
+		}
+	}
+}
+
+void pasteImage(Image dest, Image src, unsigned int x, unsigned int y) {
+	size_t ix, iy;
+	for(iy = 0;iy < src.height && iy + y < dest.height;iy++) {
+		for(ix = 0;ix < src.width && ix + x < dest.width;ix++) {
+			dest.data[dest.width * (iy + y) + ix + x] = src.data[src.width * iy + ix];
+		}
+	}
+}
+
+BOOL drawCharSJIS(Image target, FontSJIS font, unsigned int x, unsigned int y, char *character) {
+	unsigned int fontx, fonty;
+	int ismultibyte;
+	Image image;
+	if((unsigned char)character[0] >= 0x81) {
+		unsigned int multibyte = (unsigned char)character[0] << 8 | (unsigned char)character[1];
+		fontx = multibyte & 0x0F;
+		fonty = (multibyte - 0x8140) >> 4;
+		ismultibyte = TRUE;
+		image = initImage(font.width[1], font.height, BLACK, NULL_COLOR);
+		cropImage(image, font.font0208, fontx, fonty);
+	} else {
+		fontx = character[0] & 0x0F;
+		fonty = character[0] >> 4;
+		ismultibyte = FALSE;
+		image = initImage(font.width[0], font.height, BLACK, NULL_COLOR);
+		cropImage(image, font.font0201, fontx, fonty);
+	}
+	pasteImage(target, image, x, y);
+	freeImage(image);
+
+	return ismultibyte;
+}
+
+void drawTextSJIS(Image target, FontSJIS font, unsigned int x, unsigned int y, char *text) {
+	unsigned int dx = 0;
+	unsigned int dy = 0;
+	while(*text != '\0') {
+		switch(*text) {
+			case '\n':
+				dx = 0;
+				dy += font.height;
+				break;
+			case '\r':
+				break;
+			default:
+				if(drawCharSJIS(target, font, x + dx, y + dy, text)) {
+					dx += font.width[1];
+					text += 1;
+				} else {
+					dx += font.width[0];
+				}
+		}
+		text += 1;
+	}
 }
 
 Image loadBitmap(char *fileName, unsigned char transparent) {

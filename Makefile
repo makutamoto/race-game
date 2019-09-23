@@ -14,12 +14,12 @@ clean:
 game-clang.exe: $(OBJS_CLANG)
 	clang ./objs/*.o -o game-clang.exe
 
-objs/%.o: %.c
-	clang -Wall -c $^ -o $@
+objs/%.o: %.c ./include/*.h
+	clang -Wall -c $< -o $@ -Wno-invalid-source-encoding
 
 game-bcc32.exe: $(OBJS_BCC32)
 	bcc32 -egame-bcc32.exe ./objs/*.obj
 	del game-bcc32.tds
 
-objs/%.obj: %.c
-	bcc32 -wAll -o"$@" -c $^
+objs/%.obj: %.c ./include/*.h
+	bcc32 -wAll -o"$@" -c $<

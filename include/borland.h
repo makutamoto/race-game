@@ -11,6 +11,7 @@ typedef unsigned int uint32_t;
 
 #define atanf(x) (float)atan(x)
 #define ceilf(x) (float)ceil(x)
+#define floorf(x) (float)floor(x)
 #define cosf(x) (float)cos(x)
 #define sinf(x) (float)sin(x)
 #define sqrtf(x) (float)sqrt(x)

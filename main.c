@@ -32,7 +32,10 @@ static struct {
 	BOOL retry;
 } controller;
 
+static FontSJIS shnm12;
+
 static Image lifeBarBunch;
+static Image lifebarImage;
 static Image hero;
 static Image heroBullet;
 static Image enemy1;
@@ -153,7 +156,7 @@ static int enemy1Behaviour(Node *node) {
 	if(node->collisionFlags & HERO_BULLET_COLLISIONMASK) {
 		Enemy1 *enemy = node->data;
 		enemy->hp -= 1;
-		enemy->bar->texture = cropImage(lifeBarBunch, 192, 32, 0, 10 * enemy->hp / 1);
+		cropImage(enemy->bar->texture, lifeBarBunch, 0, 10 * enemy->hp / 1);
 		if(enemy->hp <= 0) {
 			causeExplosion(node->position, 50.0F);
 			removeByData(&scene.nodes, node);
@@ -172,8 +175,10 @@ static void spawnEnemy1(float x, float y, float z) {
 	Node *enemy = malloc(sizeof(Node));
 	Node *bar = malloc(sizeof(Node));
 	Enemy1 *data = malloc(sizeof(Enemy1));
+	Image image = initImage(192, 32, BLACK, NULL_COLOR);
 	*enemy = initNode("Enemy1", enemy1);
-	*bar = initNode("EnemyLifeBar", cropImage(lifeBarBunch, 192, 32, 0, 10));
+	cropImage(image, lifeBarBunch, 0, 10);
+	*bar = initNode("EnemyLifeBar", image);
 	data->hp = 1;
 	data->bar = bar;
 	enemy->shape = enemy1Shape;
@@ -226,7 +231,7 @@ static int heroBehaviour(Node *node) {
 	if(node->collisionFlags) {
 		if(node->collisionFlags & ENEMY_BULLET_COLLISIONMASK) heroHP -= 1;
 		if(node->collisionFlags & OBSTACLE_COLLISIONMASK) heroHP = 0;
-		lifeBarNode.texture = cropImage(lifeBarBunch, 192, 32, 0, heroHP);
+		cropImage(lifebarImage, lifeBarBunch, 0, heroHP);
 		if(heroHP <= 0) PlaySound(TEXT("./assets/se_maoudamashii_retro12.wav"), NULL, SND_ASYNC | SND_FILENAME);
 	}
 	mulVec2ByScalar(controller.move, 200.0F, move);
@@ -262,7 +267,10 @@ static void initialize(void) {
 	input = GetStdHandle(STD_INPUT_HANDLE);
 	initScreen(128, 128);
 	initGraphics(128, 128);
+	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
 	lifeBarBunch = loadBitmap("assets/lifebar.bmp", NULL_COLOR);
+	lifebarImage = initImage(192, 32, BLACK, NULL_COLOR);
+	cropImage(lifebarImage, lifeBarBunch, 0, 10);
 	hero = loadBitmap("assets/hero3d.bmp", NULL_COLOR);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", NULL_COLOR);
@@ -279,7 +287,7 @@ static void initialize(void) {
 	enemyLifeShape = initShapePlane(20, 5, RED);
 	heroBulletShape = initShapeBox(5, 5, 30, YELLOW);
 	enemyBulletShape = initShapeBox(5, 5, 30, MAGENTA);
-	lifeBarNode = initNodeUI("lifeBarNode", cropImage(lifeBarBunch, 192, 32, 0, 10), BLACK);
+	lifeBarNode = initNodeUI("lifeBarNode", lifebarImage, BLACK);
 	stageNode = initNode("stage", stage);
 	initShapeFromObj(&stageNode.shape, "./assets/test.obj");
 	stageNode.position[2] = 10.0F;
@@ -296,7 +304,9 @@ static void initialize(void) {
 	heroNode.behaviour = heroBehaviour;
 
 	gameoverScene = initScene();
-	gameoverImage = loadBitmap("assets/gameover.bmp", NULL_COLOR);
+	gameoverImage = initImage(128, 128, BLACK, NULL_COLOR);
+	drawTextSJIS(gameoverImage, shnm12, 20, 20, "ゲームオーバー\nm9(^Д^)");
+	drawTextSJIS(gameoverImage, shnm12, 20, 70, "「R」でリプレイ");
 	gameoverNode = initNodeUI("gameover", gameoverImage, BLACK);
 	gameoverNode.scale[0] = 100.0F;
 	gameoverNode.scale[1] = 100.0F;
@@ -305,7 +315,7 @@ static void initialize(void) {
 
 static void startGame(void) {
 	heroHP = 10;
-	lifeBarNode.texture = cropImage(lifeBarBunch, 192, 32, 0, 10);
+	cropImage(lifebarImage, lifeBarBunch, 0, 10);
 	heroNode.position[0] = 0.0F;
 	heroNode.position[1] = 0.0F;
 	heroNode.position[2] = 0.0F;
@@ -317,6 +327,7 @@ static void startGame(void) {
 	push(&scene.nodes, &heroNode);
 	push(&scene.nodes, &stageNode);
 	resetSceneClock(&scene);
+	sceneInterval();
 }
 
 static BOOL pollEvents(void) {
@@ -409,7 +420,10 @@ static void deinitialize(void) {
 	discardNode(lifeBarNode);
 	discardNode(heroNode);
 	discardNode(stageNode);
+	freeImage(shnm12.font0201);
+	freeImage(shnm12.font0208);
 	freeImage(lifeBarBunch);
+	freeImage(lifebarImage);
 	freeImage(hero);
 	freeImage(heroBullet);
 	freeImage(stoneImage);

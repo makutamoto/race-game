@@ -17,7 +17,16 @@ typedef struct {
 	unsigned char *data;
 } Image;
 
+typedef struct {
+	Image font0201;
+	Image font0208;
+	unsigned int height;
+	unsigned int width[2];
+} FontSJIS;
+
 extern Image NO_IMAGE;
+
+FontSJIS initFontSJIS(Image font0201, Image font0208, unsigned int width0201, unsigned int width0208, unsigned int height);
 
 void initGraphics(unsigned int width, unsigned int height);
 void deinitGraphics(void);
@@ -42,7 +51,11 @@ float (*getAABB(float out[3][2]))[2];
 void fillTriangle(Vertex vertices[3], Image image, float *uv[3]);
 void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices);
 
-Image cropImage(Image image, unsigned int width, unsigned int height, unsigned int xth, unsigned int yth);
+Image initImage(unsigned int width, unsigned int height, unsigned char color, unsigned char transparent);
+void cropImage(Image dest, Image src, unsigned int xth, unsigned int yth);
+void pasteImage(Image dest, Image src, unsigned int x, unsigned int y);
+BOOL drawCharSJIS(Image target, FontSJIS font, unsigned int x, unsigned int y, char *character);
+void drawTextSJIS(Image target, FontSJIS font, unsigned int x, unsigned int y, char *text);
 Image loadBitmap(char *fileName, unsigned char transparent);
 Image genRect(unsigned int width, unsigned int height, unsigned char color);
 Image genCircle(unsigned int rad, unsigned char color);
