@@ -265,7 +265,10 @@ void fillTriangle(Vertex vertices[3], Image image, const float uv[3][2]) {
 	float triangle[3][4], triangleUV[3][2];
 	int clipped[3], displayed[3];
 	int nofClipped = 0, nofDisplayed = 0;
-	unsigned char colors[3] = { vertices[0].color, vertices[1].color, vertices[2].color };
+	unsigned char colors[3];
+	colors[0] = vertices[0].color;
+	colors[1] = vertices[1].color;
+	colors[2] = vertices[2].color;
 	mulMat4Vec4(transformation, vertices[0].components, transformedTemp[0]);
 	mulMat4Vec4(transformation, vertices[1].components, transformedTemp[1]);
 	mulMat4Vec4(transformation, vertices[2].components, transformedTemp[2]);
