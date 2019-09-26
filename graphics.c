@@ -14,6 +14,8 @@
 #include "./include/colors.h"
 #include "./include/vector.h"
 
+#define COPY_ARY(dest, src) memcpy_s(dest, sizeof(dest), src, sizeof(src))
+
 Image NO_IMAGE;
 
 static unsigned char *buffer;
@@ -37,6 +39,8 @@ FontSJIS initFontSJIS(Image font0201, Image font0208, unsigned int width0201, un
 	FontSJIS font;
 	font.font0201 = font0201;
 	font.font0208 = font0208;
+	font.offset0201 = 0;
+	font.offset0208 = 0;
 	font.height = height;
 	font.width[0] = width0201;
 	font.width[1] = width0208;
@@ -161,24 +165,110 @@ static float edgeFunction(float x, float y, const float a[2], const float b[2]) 
 	return (a[0] - b[0]) * (y - a[1]) - (a[1] - b[1]) * (x - a[0]);
 }
 
-void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
-	float transformed[3][4], transformedTemp[3][4];
+static void projectTriangle(float points[3][4], Image image, const float uv[3][2], unsigned char colors[3]) {
+	unsigned int i, y, x;
+	int tooFar = 0;
+	float transformed[3][4];
 	float textures[3][2];
 	float vertexColors[3];
 	unsigned int maxCoord[2], minCoord[2];
 	float area;
 	float aspect = (float)screenSize[0] / screenSize[1];
-	unsigned int y, x;
+	for(i = 0;i < 3;i++) {
+		COPY_ARY(transformed[i], points[i]);
+		transformed[i][0] *= transformed[i][3];
+		transformed[i][1] *= transformed[i][3];
+		transformed[i][2] *= transformed[i][3];
+		if(transformed[i][2] > 1.0F) tooFar += 1;
+		transformed[i][2] *= transformed[i][3];
+		transformed[i][0] = roundf(transformed[i][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
+		transformed[i][1] = roundf(transformed[i][1] * halfScreenSize[1] + halfScreenSize[1]);
+	}
+	if(tooFar == 3) return;
+	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), (int)screenSize[0]), 0);
+	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), (int)screenSize[1]), 0);
+	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
+	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
+	area = edgeFunction(transformed[0][0], transformed[0][1], transformed[1], transformed[2]);
+	if(area == 0.0F) return;
+	if(image.data == NULL) {
+		vertexColors[0] = colors[0] * transformed[0][3];
+		vertexColors[1] = colors[1] * transformed[1][3];
+		vertexColors[2] = colors[2] * transformed[2][3];
+	} else {
+		textures[0][0] = uv[0][0] * transformed[0][3];
+		textures[0][1] = uv[0][1] * transformed[0][3];
+		textures[1][0] = uv[1][0] * transformed[1][3];
+		textures[1][1] = uv[1][1] * transformed[1][3];
+		textures[2][0] = uv[2][0] * transformed[2][3];
+		textures[2][1] = uv[2][1] * transformed[2][3];
+	}
+	for(y = minCoord[1];y < maxCoord[1];y++) {
+		for(x = minCoord[0];x < maxCoord[0];x++) {
+			float weights[3];
+			weights[0] = edgeFunction(x + 0.5F, y + 0.5F, transformed[1], transformed[2]);
+			weights[1] = edgeFunction(x + 0.5F, y + 0.5F, transformed[2], transformed[0]);
+			weights[2] = edgeFunction(x + 0.5F, y + 0.5F, transformed[0], transformed[1]);
+			if(weights[0] >= 0.0F && weights[1] >= 0.0F && weights[2] >= 0.0F) {
+				size_t index = (size_t)screenSize[0] * y + x;
+				float depth, z;
+				float dataCoords[2];
+				unsigned char color;
+				weights[0] /= area;
+				weights[1] /= area;
+				weights[2] /= area;
+				depth = 1.0F / (transformed[0][3] * weights[0] + transformed[1][3] * weights[1] + transformed[2][3] * weights[2]);
+				z = depth * (transformed[0][2] * weights[0] + transformed[1][2] * weights[1] + transformed[2][2] * weights[2]);
+				if(z <= 1.0F && depth < zBuffer[index]) {
+					if(image.data == NULL) {
+						color = (unsigned char)roundf(depth * (vertexColors[0] * weights[0] + vertexColors[1] * weights[1] + vertexColors[2] * weights[2]));
+						if(color != NULL_COLOR) {
+							buffer[index] = color;
+							zBuffer[index] = depth;
+						}
+					} else {
+						dataCoords[0] = depth * (textures[0][0] * weights[0] + textures[1][0] * weights[1] + textures[2][0] * weights[2]);
+						dataCoords[1] =	depth * (textures[0][1] * weights[0] + textures[1][1] * weights[1] + textures[2][1] * weights[2]);
+						color = image.data[image.width * min((unsigned int)(floorf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(floorf(image.width * dataCoords[0])), image.width - 1)];
+						if(color != image.transparent) {
+							buffer[index] = color;
+							zBuffer[index] = depth;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+static BOOL calcIntersectionZ(float pointA[4], float pointB[4], float borderZ, float out[4]) {
+	float zeroCheck = pointA[2] - pointB[2];
+	float t;
+	if(zeroCheck == 0.0F) return FALSE;
+	t = (borderZ - pointB[2]) / zeroCheck;
+	out[0] = (pointA[0] - pointB[0]) * t + pointB[0];
+	out[1] = (pointA[1] - pointB[1]) * t + pointB[1];
+	out[2] = borderZ;
+	out[3] = pointA[3];
+	return TRUE;
+}
+
+static void calcUVOnLine(const float pointA[3], const float pointB[3], const float point[3], const float uvA[2], const float uvB[2], float out[2]) {
+	float weight = distance3(point, pointB) / distance3(pointA, pointB);
+	out[0] = (uvA[0] - uvB[0]) * weight + uvB[0];
+	out[1] = (uvA[1] - uvB[1]) * weight + uvB[1];
+}
+
+void fillTriangle(Vertex vertices[3], Image image, const float uv[3][2]) {
+	int i;
+	float transformedTemp[3][4], transformed[3][4];
+	float triangle[3][4], triangleUV[3][2];
+	int clipped[3], displayed[3];
+	int nofClipped = 0, nofDisplayed = 0;
+	unsigned char colors[3] = { vertices[0].color, vertices[1].color, vertices[2].color };
 	mulMat4Vec4(transformation, vertices[0].components, transformedTemp[0]);
 	mulMat4Vec4(transformation, vertices[1].components, transformedTemp[1]);
 	mulMat4Vec4(transformation, vertices[2].components, transformedTemp[2]);
-	// printVec4(vertices[0].components);
-	// printVec4(vertices[1].components);
-	// printVec4(vertices[2].components);
-	// printVec4(transformedTemp[0]);
-	// printVec4(transformedTemp[1]);
-	// printVec4(transformedTemp[2]);
-	// puts("");
 	if(aabbClear) {
 		aabbTemp[0][0] = transformedTemp[0][0];
 		aabbTemp[0][1] = transformedTemp[0][0];
@@ -207,94 +297,68 @@ void fillTriangle(Vertex vertices[3], Image image, float *uv[3]) {
 	if(aabbTemp[1][1] < transformedTemp[2][1]) aabbTemp[1][1] = transformedTemp[2][1];
 	if(aabbTemp[2][0] > transformedTemp[2][2]) aabbTemp[2][0] = transformedTemp[2][2];
 	if(aabbTemp[2][1] < transformedTemp[2][2]) aabbTemp[2][1] = transformedTemp[2][2];
-	mulMat4Vec4Proj(camera, transformedTemp[0], transformed[0]);
-	mulMat4Vec4Proj(camera, transformedTemp[1], transformed[1]);
-	mulMat4Vec4Proj(camera, transformedTemp[2], transformed[2]);
-	if(transformed[0][2] < 0.0F || transformed[1][2] < 0.0F || transformed[2][2] < 0.0F) return;
-	if(transformed[0][2] > 1.0F || transformed[1][2] > 1.0F || transformed[2][2] > 1.0F) return;
-	transformed[0][0] = roundf(transformed[0][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
-	transformed[0][1] = roundf(transformed[0][1] * halfScreenSize[1] + halfScreenSize[1]);
-	transformed[1][0] = roundf(transformed[1][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
-	transformed[1][1] = roundf(transformed[1][1] * halfScreenSize[1] + halfScreenSize[1]);
-	transformed[2][0] = roundf(transformed[2][0] * halfScreenSize[0] / aspect + halfScreenSize[0]);
-	transformed[2][1] = roundf(transformed[2][1]  * halfScreenSize[1] + halfScreenSize[1]);
-	maxCoord[0] = (unsigned int)max(min(max(max(transformed[0][0], transformed[1][0]), transformed[2][0]), (int)screenSize[0]), 0);
-	maxCoord[1] = (unsigned int)max(min(max(max(transformed[0][1], transformed[1][1]), transformed[2][1]), (int)screenSize[1]), 0);
-	minCoord[0] = (unsigned int)max(min(min(transformed[0][0], transformed[1][0]), transformed[2][0]), 0);
-	minCoord[1] = (unsigned int)max(min(min(transformed[0][1], transformed[1][1]), transformed[2][1]), 0);
-	area = edgeFunction(transformed[0][0], transformed[0][1], transformed[1], transformed[2]);
-	if(area == 0.0F) return;
-	if(image.data == NULL) {
-		vertexColors[0] = vertices[0].color * transformed[0][3];
-		vertexColors[1] = vertices[1].color * transformed[1][3];
-		vertexColors[2] = vertices[2].color * transformed[2][3];
-	} else {
-		textures[0][0] = uv[0][0] * transformed[0][3];
-		textures[0][1] = uv[0][1] * transformed[0][3];
-		textures[1][0] = uv[1][0] * transformed[1][3];
-		textures[1][1] = uv[1][1] * transformed[1][3];
-		textures[2][0] = uv[2][0] * transformed[2][3];
-		textures[2][1] = uv[2][1] * transformed[2][3];
-	}
-	for(y = minCoord[1];y < maxCoord[1];y++) {
-		for(x = minCoord[0];x < maxCoord[0];x++) {
-			float weights[3];
-			weights[0] = edgeFunction(x + 0.5F, y + 0.5F, transformed[1], transformed[2]);
-			weights[1] = edgeFunction(x + 0.5F, y + 0.5F, transformed[2], transformed[0]);
-			weights[2] = edgeFunction(x + 0.5F, y + 0.5F, transformed[0], transformed[1]);
-			if(weights[0] >= 0.0F && weights[1] >= 0.0F && weights[2] >= 0.0F) {
-				size_t index = (size_t)screenSize[0] * y + x;
-				float depth;
-				float dataCoords[2];
-				unsigned char color;
-				weights[0] /= area;
-				weights[1] /= area;
-				weights[2] /= area;
-				depth = 1.0F / (transformed[0][3] * weights[0] + transformed[1][3] * weights[1] + transformed[2][3] * weights[2]);
-				if(depth < zBuffer[index]) {
-					if(image.data == NULL) {
-						color = (unsigned char)roundf(depth * (vertexColors[0] * weights[0] + vertexColors[1] * weights[1] + vertexColors[2] * weights[2]));
-						if(color != NULL_COLOR) {
-							buffer[index] = color;
-							zBuffer[index] = depth;
-						}
-					} else {
-						dataCoords[0] = depth * (textures[0][0] * weights[0] + textures[1][0] * weights[1] + textures[2][0] * weights[2]);
-						dataCoords[1] =	depth * (textures[0][1] * weights[0] + textures[1][1] * weights[1] + textures[2][1] * weights[2]);
-						color = image.data[image.width * min((unsigned int)(floorf(image.height * dataCoords[1])), image.height - 1) + min((unsigned int)(floorf(image.width * dataCoords[0])), image.width - 1)];
-						if(color != image.transparent) {
-							buffer[index] = color;
-							zBuffer[index] = depth;
-						}
-					}
-				}
-			}
+	for(i = 0;i < 3;i++) {
+		mulMat4Vec4Proj(camera, transformedTemp[i], transformed[i]);
+		if(transformed[i][2] < 0.0F) {
+			clipped[nofClipped] = i;
+			nofClipped += 1;
+		} else {
+			displayed[nofDisplayed] = i;
+			nofDisplayed += 1;
 		}
+	}
+	switch(nofClipped) {
+		case 0:
+			projectTriangle(transformed, image, uv, colors);
+			break;
+		case 1:
+			COPY_ARY(triangle[0], transformed[0]);
+			COPY_ARY(triangle[1], transformed[1]);
+			COPY_ARY(triangle[2], transformed[2]);
+			calcIntersectionZ(transformed[clipped[0]], transformed[displayed[0]], 0, triangle[clipped[0]]);
+			COPY_ARY(triangleUV[displayed[0]], uv[displayed[0]]);
+			COPY_ARY(triangleUV[displayed[1]], uv[displayed[1]]);
+			calcUVOnLine(transformed[clipped[0]], transformed[displayed[0]], triangle[clipped[0]], uv[clipped[0]], uv[displayed[0]], triangleUV[clipped[0]]);
+			projectTriangle(triangle, image, triangleUV, colors);
+			COPY_ARY(triangle[displayed[0]], triangle[displayed[1]]);
+			calcIntersectionZ(transformed[clipped[0]], transformed[displayed[1]], 0, triangle[displayed[1]]);
+			COPY_ARY(triangleUV[displayed[0]], uv[displayed[1]]);
+			calcUVOnLine(transformed[clipped[0]], transformed[displayed[1]], triangle[displayed[1]], uv[clipped[0]], uv[displayed[1]], triangleUV[displayed[1]]);
+			projectTriangle(triangle, image, triangleUV, colors);
+			break;
+		case 2:
+			COPY_ARY(triangle[displayed[0]], transformed[displayed[0]]);
+			calcIntersectionZ(transformed[clipped[0]], transformed[displayed[0]], 0, triangle[clipped[0]]);
+			calcIntersectionZ(transformed[clipped[1]], transformed[displayed[0]], 0, triangle[clipped[1]]);
+			COPY_ARY(triangleUV[displayed[0]], uv[displayed[0]]);
+			calcUVOnLine(transformed[clipped[0]], transformed[displayed[0]], triangle[clipped[0]], uv[clipped[0]], uv[displayed[0]], triangleUV[clipped[0]]);
+			calcUVOnLine(transformed[clipped[1]], transformed[displayed[0]], triangle[clipped[1]], uv[clipped[1]], uv[displayed[0]], triangleUV[clipped[1]]);
+			projectTriangle(triangle, image, triangleUV, colors);
+			break;
 	}
 }
 
 void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices) {
-	unsigned long i;
-	static float defaultUV[2] = { 0.0F, 0.0F };
+	unsigned long i1, i2;
 	resetIteration(&indices);
 	resetIteration(&uvIndices);
-	for(i = 0;i < indices.length / 3;i++) {
-		unsigned long index[3], uvIndex[3];
+	for(i1 = 0;i1 < indices.length / 3;i1++) {
 		Vertex triangle[3];
-		float *triangleUV[3] = { defaultUV, defaultUV, defaultUV };
-		index[0] = *(unsigned long*)nextData(&indices);
-		index[1] = *(unsigned long*)nextData(&indices);
-		index[2] = *(unsigned long*)nextData(&indices);
-		uvIndex[0] = *(unsigned long*)nextData(&uvIndices);
-		uvIndex[1] = *(unsigned long*)nextData(&uvIndices);
-		uvIndex[2] = *(unsigned long*)nextData(&uvIndices);
-		triangle[0] = *(Vertex*)dataAt(vertices, index[0]);
-		triangle[1] = *(Vertex*)dataAt(vertices, index[1]);
-		triangle[2] = *(Vertex*)dataAt(vertices, index[2]);
-		if(uv.length != 0) {
-			triangleUV[0] = (float*)dataAt(uv, uvIndex[0]);
-			triangleUV[1] = (float*)dataAt(uv, uvIndex[1]);
-			triangleUV[2] = (float*)dataAt(uv, uvIndex[2]);
+		float triangleUV[3][2];
+		for(i2 = 0;i2 < 3;i2++) {
+			unsigned long index;
+			index = *(unsigned long*)nextData(&indices);
+			triangle[i2] = *(Vertex*)dataAt(vertices, index);
+			if(uv.length != 0) {
+				float *uvPointer;
+				index = *(unsigned long*)nextData(&uvIndices);
+				uvPointer = (float*)dataAt(uv, index);
+				triangleUV[i2][0] = uvPointer[0];
+				triangleUV[i2][1] = uvPointer[1];
+			} else {
+				triangleUV[i2][0] = 0.0F;
+				triangleUV[i2][1] = 0.0F;
+			}
 		}
 		fillTriangle(triangle, image, triangleUV);
 	}
@@ -345,13 +409,13 @@ BOOL drawCharSJIS(Image target, FontSJIS font, unsigned int x, unsigned int y, c
 	if((unsigned char)character[0] >= 0x81) {
 		unsigned int multibyte = (unsigned char)character[0] << 8 | (unsigned char)character[1];
 		fontx = multibyte & 0x0F;
-		fonty = (multibyte - 0x8140) >> 4;
+		fonty = ((multibyte - 0x8140) >> 4) - font.offset0208;
 		ismultibyte = TRUE;
 		image = initImage(font.width[1], font.height, BLACK, NULL_COLOR);
 		cropImage(image, font.font0208, fontx, fonty);
 	} else {
 		fontx = character[0] & 0x0F;
-		fonty = character[0] >> 4;
+		fonty = (character[0] >> 4) - font.offset0201;
 		ismultibyte = FALSE;
 		image = initImage(font.width[0], font.height, BLACK, NULL_COLOR);
 		cropImage(image, font.font0201, fontx, fonty);

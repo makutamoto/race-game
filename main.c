@@ -290,7 +290,10 @@ static void initialize(void) {
 	lifeBarNode = initNodeUI("lifeBarNode", lifebarImage, BLACK);
 	stageNode = initNode("stage", stage);
 	initShapeFromObj(&stageNode.shape, "./assets/test.obj");
-	stageNode.position[2] = 10.0F;
+	stageNode.position[1] = -100.0F;
+	stageNode.position[2] = 0.0F;
+	stageNode.scale[0] = 10.0F;
+	stageNode.scale[2] = 10.0F;
 	lifeBarNode.position[0] = 2.5F;
 	lifeBarNode.position[1] = 2.5F;
 	lifeBarNode.scale[0] = 30.0F;

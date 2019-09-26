@@ -20,6 +20,8 @@ typedef struct {
 typedef struct {
 	Image font0201;
 	Image font0208;
+	unsigned int offset0201;
+	unsigned int offset0208;
 	unsigned int height;
 	unsigned int width[2];
 } FontSJIS;
@@ -48,7 +50,7 @@ void rotateTransformation(float rx, float ry, float rz);
 void clearAABB(void);
 float (*getAABB(float out[3][2]))[2];
 
-void fillTriangle(Vertex vertices[3], Image image, float *uv[3]);
+void fillTriangle(Vertex vertices[3], Image image, const float uv[3][2]);
 void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices);
 
 Image initImage(unsigned int width, unsigned int height, unsigned char color, unsigned char transparent);

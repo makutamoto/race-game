@@ -17,7 +17,7 @@ float dot4(const float a[4], const float b[4]) {
 	return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
 }
 
-float* cross(float a[3], float b[3], float out[3]) {
+float* cross(const float a[3], const float b[3], float out[3]) {
 	out[0] = a[1] * b[2] - a[2] * b[1];
 	out[1] = a[2] * b[0] - a[0] * b[2];
 	out[2] = a[0] * b[1] - a[1] * b[0];
@@ -37,6 +37,14 @@ float distance2(const float a[2], const float b[2]) {
 	position[0] = b[0] - a[0];
 	position[1] = b[1] - a[1];
 	return length2(position);
+}
+
+float distance3(const float a[3], const float b[3]) {
+	float position[3];
+	position[0] = b[0] - a[0];
+	position[1] = b[1] - a[1];
+	position[2] = b[2] - a[2];
+	return length3(position);
 }
 
 float distancePoint2(const float point[2], const float vector[2]) {
@@ -247,18 +255,10 @@ float* mulMat4Vec4Proj(const float mat[4][4], const float vec[4], float out[4]) 
 	out[1] = dot4(mat[1], vec);
 	out[2] = dot4(mat[2], vec);
 	out[3] = dot4(mat[3], vec);
-	if(out[3] != 1.0F) {
-		if(out[3] == 0.0F) {
-			out[0] = FLT_MAX;
-			out[1] = FLT_MAX;
-			out[2] = FLT_MAX;
-			out[3] = FLT_MAX;
-		} else {
-			out[0] /= out[3];
-			out[1] /= out[3];
-			out[2] /= out[3];
-			out[3] = 1.0F / out[3];
-		}
+	if(out[2] <= 0.0F) {
+		out[3] = 1.0F;
+	} else {
+		out[3] = 1.0F / out[3];
 	}
 	return out;
 }
