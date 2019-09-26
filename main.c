@@ -15,6 +15,7 @@
 #pragma comment(lib, "Winmm.lib")
 #endif
 
+#define SCREEN_SIZE 128
 #define FRAME_PER_SECOND 60
 #define NOF_MAX_EVENTS 10
 
@@ -265,8 +266,8 @@ static void sceneInterval() {
 
 static void initialize(void) {
 	input = GetStdHandle(STD_INPUT_HANDLE);
-	initScreen(128, 128);
-	initGraphics(128, 128);
+	initScreen(SCREEN_SIZE, SCREEN_SIZE);
+	initGraphics(SCREEN_SIZE, SCREEN_SIZE);
 	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
 	lifeBarBunch = loadBitmap("assets/lifebar.bmp", NULL_COLOR);
 	lifebarImage = initImage(192, 32, BLACK, NULL_COLOR);
