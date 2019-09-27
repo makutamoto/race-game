@@ -22,6 +22,7 @@ float* mulVec4ByScalar(const float vector[4], float scalar, float out[4]);
 float* normalize2(const float vector[2], float out[2]);
 float* normalize3(const float vector[3], float out[3]);
 float* direction2(const float a[2], const float b[2], float out[2]);
+float* direction3(const float a[3], const float b[3], float out[3]);
 float angleVec2(const float vector[2]);
 float	(*mulMat3(const float a[3][3], const float b[3][3], float out[3][3]))[3];
 float	(*mulMat4(const float a[4][4], const float b[4][4], float out[4][4]))[4];

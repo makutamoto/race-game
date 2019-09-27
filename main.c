@@ -10,6 +10,7 @@
 #include "./include/scene.h"
 #include "./include/node.h"
 #include "./include/vector.h"
+#include "./include/controller.h"
 
 #ifndef __BORLANDC__
 #pragma comment(lib, "Winmm.lib")
@@ -17,7 +18,6 @@
 
 #define SCREEN_SIZE 128
 #define FRAME_PER_SECOND 60
-#define NOF_MAX_EVENTS 10
 
 #define HERO_BULLET_COLLISIONMASK 0x01
 #define ENEMY_BULLET_COLLISIONMASK 0x02
@@ -25,15 +25,20 @@
 
 static HANDLE input;
 static HANDLE screen;
-static INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
 static struct {
 	float move[2];
 	float direction[2];
-	BOOL action;
-	BOOL retry;
+	float action;
+	float retry;
+	float quit;
 } controller;
 
 static FontSJIS shnm12;
+
+static Controller keyboard;
+static ControllerEvent wasd[4], action, restart, quit;
+static float autoMove[2];
+static BOOL autoAction;
 
 static Image lifeBarBunch;
 static Image lifebarImage;
@@ -44,6 +49,7 @@ static Image enemy1;
 static Image stage;
 static Image stoneImage;
 static Image gameoverImage;
+static Image startImage;
 static Image explosionImage;
 
 static Shape enemy1Shape;
@@ -60,7 +66,9 @@ static Node heroNode;
 static Node rayNode;
 static Node stageNode;
 static Node gameoverNode;
+static Node startNode;
 
+BOOL start = TRUE;
 static unsigned int heroHP;
 static unsigned int score;
 
@@ -181,7 +189,7 @@ static void spawnEnemy1(float x, float y, float z) {
 	Node *bar = malloc(sizeof(Node));
 	Enemy1 *data = malloc(sizeof(Enemy1));
 	Image image = initImage(192, 32, BLACK, NULL_COLOR);
-	*enemy = initNode("Enemy1", enemy1);
+	*enemy = initNode("enemy1", enemy1);
 	cropImage(image, lifeBarBunch, 0, 10);
 	*bar = initNode("EnemyLifeBar", image);
 	data->hp = 1;
@@ -231,8 +239,37 @@ static void spawnStone(float x, float y, float z) {
 	push(&scene.nodes, stone);
 }
 
-static void gameover() {
-	push(&scene.nodes, &gameoverNode);
+static void gameover(void) {
+	if(!start) {
+		push(&scene.nodes, &gameoverNode);
+	}
+}
+
+static void autoControl(void) {
+	Node *node;
+	autoMove[0] = 0.0F;
+	autoMove[1] = 0.0F;
+	resetIteration(&scene.nodes);
+	node = nextData(&scene.nodes);
+	while(node) {
+		float temp[2];
+		if(strcmp("enemy1", node->id) == 0) {
+			subVec2(node->position, heroNode.position, temp);
+			if(node->position[2] > 200.0F) {
+				addVec2(autoMove, temp, autoMove);
+				autoAction = TRUE;
+				break;
+			} else {
+				subVec2(autoMove, node->position, autoMove);
+			}
+		} else if(strcmp("stone", node->id) == 0 || strcmp("enemyBullet", node->id) == 0) {
+			if(node->position[2] < 200.0F) {
+				subVec2(autoMove, node->position, autoMove);
+			}
+		}
+		node = nextData(&scene.nodes);
+	}
+	normalize2(autoMove, autoMove);
 }
 
 static int heroBehaviour(Node *node) {
@@ -247,12 +284,16 @@ static int heroBehaviour(Node *node) {
 			gameover();
 		}
 	}
-	mulVec2ByScalar(controller.move, 200.0F, move);
+	if(start) {
+		mulVec2ByScalar(autoMove, 200.0F, move);
+	} else {
+		mulVec2ByScalar(controller.move, 200.0F, move);
+	}
 	node->velocity[0] = move[0];
 	node->velocity[1] = move[1];
 	node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
 	node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
-	if(controller.action) {
+	if(controller.action || (start && autoAction)) {
 		static clock_t previousClock;
 		if((clock() - previousClock) * 1000 / CLOCKS_PER_SEC > 500) {
 			shootBullet("heroBullet", heroBulletShape, node->position, node->angle[1], HERO_BULLET_COLLISIONMASK);
@@ -277,7 +318,7 @@ static void sceneInterval() {
 		for(x = 0;x < 3;x++) {
 			for(y = 0;y < 3;y++) {
 				float cx = 200.0F / 3.0F * x - 100.0F;
-				float cy = 200.0F / 3.0F * y - 100.0F;
+				float cy = 200.0F / 3.0F * y - 60.0F;
 				switch(rand() % 4) {
 					case 0:
 						spawnStone(cx, cy, 500.0F);
@@ -300,6 +341,20 @@ static void initialize(void) {
 	initScreen(SCREEN_SIZE, SCREEN_SIZE);
 	initGraphics(SCREEN_SIZE, SCREEN_SIZE);
 	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
+
+	keyboard = initController();
+	initControllerEventCross(wasd, 'W', 'A', 'S', 'D', controller.move);
+	action = initControllerEvent(VK_SPACE, 1.0F, 0.0F, &controller.action);
+	restart = initControllerEvent('R', 1.0F, 0.0F, &controller.retry);
+	quit = initControllerEvent(VK_ESCAPE, 1.0F, 0.0F, &controller.quit);
+	push(&keyboard.events, &wasd[0]);
+	push(&keyboard.events, &wasd[1]);
+	push(&keyboard.events, &wasd[2]);
+	push(&keyboard.events, &wasd[3]);
+	push(&keyboard.events, &action);
+	push(&keyboard.events, &restart);
+	push(&keyboard.events, &quit);
+
 	lifeBarBunch = loadBitmap("assets/lifebar.bmp", NULL_COLOR);
 	lifebarImage = initImage(192, 32, BLACK, NULL_COLOR);
 	cropImage(lifebarImage, lifeBarBunch, 0, 10);
@@ -342,6 +397,14 @@ static void initialize(void) {
 	rayNode.position[2] = 256.0F;
 	push(&heroNode.children, &rayNode);
 
+	startImage = initImage(96, 48, BLACK, BLACK);
+	startNode = initNodeUI("gameover", startImage, BLACK);
+	startNode.scale[0] = 9600 / SCREEN_SIZE;
+	startNode.scale[1] = 4800 / SCREEN_SIZE;
+	startNode.position[0] = 50 - startNode.scale[0] / 2;
+	startNode.position[1] = 50 - startNode.scale[1] / 2;
+	drawTextSJIS(startImage, shnm12, 0, 0, "SPACE SHOOTER\n\n\"SPACE\"でプレイ\n\"ESC\"で終了");
+
 	scoreImage = initImage(60, 12, BLACK, BLACK);
 	scoreNode = initNodeUI("score", scoreImage, NULL_COLOR);
 	scoreNode.position[0] = 100 - 6000 / 128;
@@ -349,13 +412,13 @@ static void initialize(void) {
 	scoreNode.scale[1] = 1200 / 128;
 	scoreNode.behaviour = scoreBehaviour;
 
-	gameoverImage = initImage(84, 36, BLACK, BLACK);
+	gameoverImage = initImage(84, 48, BLACK, BLACK);
 	gameoverNode = initNodeUI("gameover", gameoverImage, BLACK);
 	gameoverNode.scale[0] = 8400 / SCREEN_SIZE;
-	gameoverNode.scale[1] = 3600 / SCREEN_SIZE;
+	gameoverNode.scale[1] = 4800 / SCREEN_SIZE;
 	gameoverNode.position[0] = 50 - gameoverNode.scale[0] / 2;
 	gameoverNode.position[1] = 50 - gameoverNode.scale[1] / 2;
-	drawTextSJIS(gameoverImage, shnm12, 0, 0, "ゲームオーバー\n\"R\"でリプレイ\n\"ESC\"で終了");
+	drawTextSJIS(gameoverImage, shnm12, 0, 0, "ゲームオーバー\n\n\"R\"でリプレイ\n\"ESC\"で終了");
 }
 
 static void startGame(void) {
@@ -368,6 +431,7 @@ static void startGame(void) {
 	srand(0);
 
 	clearVector(&scene.nodes);
+	if(start) push(&scene.nodes, &startNode);
 	push(&scene.nodes, &lifeBarNode);
 	push(&scene.nodes, &scoreNode);
 	push(&scene.nodes, &heroNode);
@@ -375,84 +439,6 @@ static void startGame(void) {
 	resetSceneClock(&scene);
 	sceneInterval();
 	score = 0;
-}
-
-static BOOL pollEvents(void) {
-	int i;
-	DWORD nofEvents;
-	KEY_EVENT_RECORD *keyEvent;
-	GetNumberOfConsoleInputEvents(input, &nofEvents);
-	if(nofEvents == 0) return TRUE;
-	ReadConsoleInput(input, inputRecords, NOF_MAX_EVENTS, &nofEvents);
-	for(i = 0;i < (int)nofEvents;i += 1) {
-		switch(inputRecords[i].EventType) {
-			case KEY_EVENT:
-			keyEvent = &inputRecords[i].Event.KeyEvent;
-			if(keyEvent->bKeyDown) {
-				switch(keyEvent->wVirtualKeyCode) {
-					case VK_ESCAPE: return FALSE;
-					case 'W':
-						controller.move[1] = 1.0F;
-						break;
-					case 'S':
-						controller.move[1] = -1.0F;
-						break;
-					case 'A':
-						controller.move[0] = -1.0F;
-						break;
-					case 'D':
-						controller.move[0] = 1.0F;
-						break;
-					case 'R':
-						controller.retry = TRUE;
-						break;
-					case VK_UP:
-						controller.direction[1] = -1.0F;
-						break;
-					case VK_DOWN:
-						controller.direction[1] = 1.0F;
-						break;
-					case VK_LEFT:
-						controller.direction[0] = 1.0F;
-						break;
-					case VK_RIGHT:
-						controller.direction[0] = -1.0F;
-						break;
-					case VK_SPACE:
-						controller.action = TRUE;
-						break;
-				}
-			} else {
-				switch(keyEvent->wVirtualKeyCode) {
-					case 'W':
-					case 'S':
-						controller.move[1] = 0.0F;
-						break;
-					case 'A':
-					case 'D':
-						controller.move[0] = 0.0F;
-						break;
-					case 'R':
-						controller.retry = FALSE;
-						break;
-					case VK_UP:
-					case VK_DOWN:
-						controller.direction[1] = 0.0F;
-						break;
-					case VK_LEFT:
-					case VK_RIGHT:
-						controller.direction[0] = 0.0F;
-						break;
-					case VK_SPACE:
-						controller.action = FALSE;
-						break;
-				}
-			}
-			break;
-			default: break;
-		}
-	}
-	return TRUE;
 }
 
 static void deinitialize(void) {
@@ -469,6 +455,7 @@ static void deinitialize(void) {
 	discardNode(scoreNode);
 	discardNode(heroNode);
 	discardNode(stageNode);
+	discardNode(startNode);
 	freeImage(shnm12.font0201);
 	freeImage(shnm12.font0208);
 	freeImage(lifeBarBunch);
@@ -477,6 +464,7 @@ static void deinitialize(void) {
 	freeImage(hero);
 	freeImage(heroBullet);
 	freeImage(stoneImage);
+	freeImage(startImage);
 	freeImage(gameoverImage);
 	freeImage(explosionImage);
 	discardScene(&scene);
@@ -489,7 +477,16 @@ int main(void) {
 	startGame();
 	previousClock = clock();
 	while(TRUE) {
-		if(!pollEvents()) break;
+		updateController(keyboard, input);
+		if(controller.quit) break;
+		if(start) {
+			if(controller.action) {
+				start = FALSE;
+				startGame();
+			} else {
+				autoControl();
+			}
+		}
 		drawScene(&scene, screen);
 		if(heroHP <= 0) {
 			if(controller.retry) startGame();

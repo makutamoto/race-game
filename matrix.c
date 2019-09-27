@@ -140,6 +140,13 @@ float* direction2(const float a[2], const float b[2], float out[2]) {
 	return out;
 }
 
+float* direction3(const float a[3], const float b[3], float out[3]) {
+	float temp[3];
+	subVec3(a, b, temp);
+	normalize3(temp, out);
+	return out;
+}
+
 float angleVec2(const float vector[2]) {
 	float result;
 	if(vector[0] == 0.0F) {
