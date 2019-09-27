@@ -37,6 +37,7 @@ static FontSJIS shnm12;
 
 static Image lifeBarBunch;
 static Image lifebarImage;
+static Image scoreImage;
 static Image hero;
 static Image heroBullet;
 static Image enemy1;
@@ -53,13 +54,15 @@ static Shape stoneShape;
 static Shape explosionShape;
 
 static Node lifeBarNode;
+static Node scoreNode;
 static Scene scene;
-static Scene gameoverScene;
 static Node heroNode;
+static Node rayNode;
 static Node stageNode;
 static Node gameoverNode;
 
 static unsigned int heroHP;
+static unsigned int score;
 
 typedef struct {
 	int i;
@@ -162,6 +165,7 @@ static int enemy1Behaviour(Node *node) {
 			causeExplosion(node->position, 50.0F);
 			removeByData(&scene.nodes, node);
 			free(node);
+			score += 10;
 			return FALSE;
 		}
 	}
@@ -194,7 +198,7 @@ static void spawnEnemy1(float x, float y, float z) {
 	enemy->collisionMaskPassive = HERO_BULLET_COLLISIONMASK;
 	enemy->behaviour = enemy1Behaviour;
 	enemy->data = data;
-	addIntervalEventNode(enemy, 1000, enemy1BehaviourInterval);
+	addIntervalEventNode(enemy, 3000, enemy1BehaviourInterval);
 	bar->shape = enemyLifeShape;
 	bar->position[1] = -16.0F;
 	push(&enemy->children, bar);
@@ -218,13 +222,17 @@ static void spawnStone(float x, float y, float z) {
 	stone->position[1] = y;
 	stone->position[2] = z;
 	stone->velocity[2] = -100.0F;
-	stone->scale[0] = 50.0F;
-	stone->scale[1] = 50.0F;
-	stone->scale[2] = 10.0F;
+	stone->scale[0] = 32.0F;
+	stone->scale[1] = 32.0F;
+	stone->scale[2] = 32.0F;
 	stone->behaviour = stoneBehaviour;
 	stone->collisionMaskActive = OBSTACLE_COLLISIONMASK;
 	stone->collisionMaskPassive = HERO_BULLET_COLLISIONMASK | ENEMY_BULLET_COLLISIONMASK;
 	push(&scene.nodes, stone);
+}
+
+static void gameover() {
+	push(&scene.nodes, &gameoverNode);
 }
 
 static int heroBehaviour(Node *node) {
@@ -233,7 +241,11 @@ static int heroBehaviour(Node *node) {
 		if(node->collisionFlags & ENEMY_BULLET_COLLISIONMASK) heroHP -= 1;
 		if(node->collisionFlags & OBSTACLE_COLLISIONMASK) heroHP = 0;
 		cropImage(lifebarImage, lifeBarBunch, 0, heroHP);
-		if(heroHP <= 0) PlaySound(TEXT("./assets/se_maoudamashii_retro12.wav"), NULL, SND_ASYNC | SND_FILENAME);
+		if(heroHP <= 0) {
+			causeExplosion(node->position, 50.0F);
+			removeByData(&scene.nodes, node);
+			gameover();
+		}
 	}
 	mulVec2ByScalar(controller.move, 200.0F, move);
 	node->velocity[0] = move[0];
@@ -252,15 +264,34 @@ static int heroBehaviour(Node *node) {
 	return TRUE;
 }
 
+static int scoreBehaviour(Node *node) {
+	char buffer[11];
+	sprintf(buffer, "SCORE %04u", score);
+	drawTextSJIS(scoreImage, shnm12, 0, 0, buffer);
+	return TRUE;
+}
+
 static void sceneInterval() {
-	float x = (float)rand() / RAND_MAX;
-	float y = (float)rand() / RAND_MAX;
-	spawnStone(200.0F * x - 100.0F, 200.0F * y - 100.0F, 500.0F);
-	spawnEnemy1(-200.0F * x + 100.0F, 200.0F * y - 100.0F, 500.0F);
-	if(rand() > RAND_MAX / 2) {
-		spawnStone(-200.0F * x + 100.0F, -200.0F * y + 100.0F, 500.0F);
-	} else {
-		spawnEnemy1(-200.0F * x + 100.0F, -200.0F * y + 100.0F, 500.0F);
+	if(heroHP > 0) {
+		int x, y;
+		for(x = 0;x < 3;x++) {
+			for(y = 0;y < 3;y++) {
+				float cx = 200.0F / 3.0F * x - 100.0F;
+				float cy = 200.0F / 3.0F * y - 100.0F;
+				switch(rand() % 4) {
+					case 0:
+						spawnStone(cx, cy, 500.0F);
+						break;
+					case 1:
+						spawnEnemy1(cx, cy, 500.0F);
+						break;
+					case 2:
+					case 3:
+						break;
+				}
+			}
+		}
+		score += 5;
 	}
 }
 
@@ -280,7 +311,7 @@ static void initialize(void) {
 	explosionImage = loadBitmap("./assets/explosion.bmp", NULL_COLOR);
 	scene = initScene();
 	scene.camera = initCamera(0.0F, 0.0F, -100.0F, 1.0F);
-	scene.background = BLUE;
+	scene.background = DARK_BLUE;
 	addIntervalEventScene(&scene, 5000, sceneInterval);
 	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj");
 	initShapeFromObj(&stoneShape, "./assets/stone.obj");
@@ -306,15 +337,25 @@ static void initialize(void) {
 	heroNode.scale[2] = 32.0F;
 	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK | OBSTACLE_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
+	rayNode = initNode("ray", NO_IMAGE);
+	rayNode.shape = initShapeBox(3, 3, 512, RED);
+	rayNode.position[2] = 256.0F;
+	push(&heroNode.children, &rayNode);
 
-	gameoverScene = initScene();
-	gameoverImage = initImage(128, 128, BLACK, NULL_COLOR);
-	drawTextSJIS(gameoverImage, shnm12, 20, 20, "ゲームオーバー\nm9(^Д^)");
-	drawTextSJIS(gameoverImage, shnm12, 20, 70, "「R」でリプレイ");
+	scoreImage = initImage(60, 12, BLACK, BLACK);
+	scoreNode = initNodeUI("score", scoreImage, NULL_COLOR);
+	scoreNode.position[0] = 100 - 6000 / 128;
+	scoreNode.scale[0] = 6000 / 128;
+	scoreNode.scale[1] = 1200 / 128;
+	scoreNode.behaviour = scoreBehaviour;
+
+	gameoverImage = initImage(84, 36, BLACK, BLACK);
 	gameoverNode = initNodeUI("gameover", gameoverImage, BLACK);
-	gameoverNode.scale[0] = 100.0F;
-	gameoverNode.scale[1] = 100.0F;
-	push(&gameoverScene.nodes, &gameoverNode);
+	gameoverNode.scale[0] = 8400 / SCREEN_SIZE;
+	gameoverNode.scale[1] = 3600 / SCREEN_SIZE;
+	gameoverNode.position[0] = 50 - gameoverNode.scale[0] / 2;
+	gameoverNode.position[1] = 50 - gameoverNode.scale[1] / 2;
+	drawTextSJIS(gameoverImage, shnm12, 0, 0, "ゲームオーバー\n\"R\"でリプレイ\n\"ESC\"で終了");
 }
 
 static void startGame(void) {
@@ -328,10 +369,12 @@ static void startGame(void) {
 
 	clearVector(&scene.nodes);
 	push(&scene.nodes, &lifeBarNode);
+	push(&scene.nodes, &scoreNode);
 	push(&scene.nodes, &heroNode);
-	push(&scene.nodes, &stageNode);
+	// push(&scene.nodes, &stageNode);
 	resetSceneClock(&scene);
 	sceneInterval();
+	score = 0;
 }
 
 static BOOL pollEvents(void) {
@@ -347,7 +390,7 @@ static BOOL pollEvents(void) {
 			keyEvent = &inputRecords[i].Event.KeyEvent;
 			if(keyEvent->bKeyDown) {
 				switch(keyEvent->wVirtualKeyCode) {
-					case 'Q': return FALSE;
+					case VK_ESCAPE: return FALSE;
 					case 'W':
 						controller.move[1] = 1.0F;
 						break;
@@ -414,6 +457,7 @@ static BOOL pollEvents(void) {
 
 static void deinitialize(void) {
 	discardShape(heroNode.shape);
+	discardShape(rayNode.shape);
 	discardShape(stageNode.shape);
 	discardShape(enemy1Shape);
 	discardShape(enemyLifeShape);
@@ -422,19 +466,20 @@ static void deinitialize(void) {
 	discardShape(stoneShape);
 	discardShape(explosionShape);
 	discardNode(lifeBarNode);
+	discardNode(scoreNode);
 	discardNode(heroNode);
 	discardNode(stageNode);
 	freeImage(shnm12.font0201);
 	freeImage(shnm12.font0208);
 	freeImage(lifeBarBunch);
 	freeImage(lifebarImage);
+	freeImage(scoreImage);
 	freeImage(hero);
 	freeImage(heroBullet);
 	freeImage(stoneImage);
 	freeImage(gameoverImage);
 	freeImage(explosionImage);
 	discardScene(&scene);
-	discardScene(&gameoverScene);
 	deinitGraphics();
 }
 
@@ -445,10 +490,8 @@ int main(void) {
 	previousClock = clock();
 	while(TRUE) {
 		if(!pollEvents()) break;
-		if(heroHP > 0) {
-			drawScene(&scene, screen);
-		} else {
-			drawScene(&gameoverScene, screen);
+		drawScene(&scene, screen);
+		if(heroHP <= 0) {
 			if(controller.retry) startGame();
 		}
 		while(clock() - previousClock < CLOCKS_PER_SEC / FRAME_PER_SECOND);

@@ -55,6 +55,7 @@ int push(Vector *vector, void *data) {
 	if(vector->lastItem != NULL) vector->lastItem->nextItem = newItem;
 	vector->lastItem = newItem;
 	vector->length += 1;
+	vector->cacheItem = NULL;
 	return TRUE;
 }
 
@@ -72,22 +73,49 @@ void* pop(Vector *vector) {
 		vector->lastItem = previousItem;
 	}
 	vector->length -= 1;
+	vector->cacheItem = NULL;
 	return data;
 }
 
-VectorItem* ItemAt(Vector vector, size_t index) {
+VectorItem* ItemAt(Vector *vector, size_t index) {
 	size_t i;
 	VectorItem *currentItem;
-	if(vector.firstItem == NULL) return NULL;
-	currentItem = vector.firstItem;
-	for(i = 0;i < index;i++) {
-		if(currentItem->nextItem == NULL) return NULL;
-		currentItem = currentItem->nextItem;
+	if(vector->firstItem == NULL) return NULL;
+	if(vector->cacheItem && max(vector->cacheIndex, index) - min(vector->cacheIndex, index) < min(index, vector->length - index - 1)) {
+		currentItem = vector->cacheItem;
+		if(vector->cacheIndex < index) {
+			for(i = vector->cacheIndex;i < index;i++) {
+				if(currentItem->nextItem == NULL) return NULL;
+				currentItem = currentItem->nextItem;
+			}
+		} else {
+			for(i = vector->cacheIndex;i > index;i--) {
+				if(currentItem->previousItem == NULL) return NULL;
+				currentItem = currentItem->previousItem;
+			}
+		}
+	} else {
+		if(index < vector->length / 2) {
+			currentItem = vector->firstItem;
+			for(i = 0;i < index;i++) {
+				if(currentItem->nextItem == NULL) return NULL;
+				currentItem = currentItem->nextItem;
+			}
+		} else {
+			size_t count = vector->length - index - 1;
+			currentItem = vector->lastItem;
+			for(i = 0;i < count;i++) {
+				if(currentItem->previousItem == NULL) return NULL;
+				currentItem = currentItem->previousItem;
+			}
+		}
 	}
+	vector->cacheIndex = index;
+	vector->cacheItem = currentItem;
 	return currentItem;
 }
 
-void* dataAt(Vector vector, size_t index) {
+void* dataAt(Vector *vector, size_t index) {
 	VectorItem *item = ItemAt(vector, index);
 	if(item == NULL) return NULL;
 	return item->data;
@@ -107,7 +135,7 @@ int insertAt(Vector *vector, size_t index, void *data) {
 		if(index == vector->length) {
 			push(vector, data);
 		} else {
-			VectorItem *item = ItemAt(*vector, index);
+			VectorItem *item = ItemAt(vector, index);
 			VectorItem *newItem;
 			if(item == NULL) return FALSE;
 			newItem = (VectorItem*)malloc(sizeof(VectorItem));
@@ -119,11 +147,12 @@ int insertAt(Vector *vector, size_t index, void *data) {
 		}
 	}
 	vector->length += 1;
+	vector->cacheItem = NULL;
 	return TRUE;
 }
 
 void* removeAt(Vector *vector, size_t index) {
-	VectorItem *item = ItemAt(*vector, index);
+	VectorItem *item = ItemAt(vector, index);
 	void *data = item->data;
 	if(vector->currentItem == item) vector->currentItem = item->nextItem;
 	if(item->previousItem == NULL) {
@@ -138,6 +167,7 @@ void* removeAt(Vector *vector, size_t index) {
 	}
 	free(item);
 	vector->length -= 1;
+	vector->cacheItem = NULL;
 	return data;
 }
 

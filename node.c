@@ -27,9 +27,9 @@ Node initNodeUI(const char *id, Image image, unsigned char color) {
   Node node;
   memset(&node, 0, sizeof(Node));
   memcpy_s(node.id, sizeof(node.id), id, min(sizeof(node.id), strlen(id)));
-	node.scale[0] = 1.0;
-	node.scale[1] = 1.0;
-  node.scale[2] = 1.0;
+  node.scale[0] = 1.0F;
+  node.scale[1] = 1.0F;
+  node.scale[2] = 1.0F;
 	node.texture = image;
   node.shape = initShapePlaneInv(1.0F, 1.0F, color);
   node.children = initVector();
@@ -38,7 +38,7 @@ Node initNodeUI(const char *id, Image image, unsigned char color) {
 }
 
 void discardNode(Node node) {
-  freeVector(&node.children);
+  clearVector(&node.children);
 }
 
 void drawNode(Node *node) {

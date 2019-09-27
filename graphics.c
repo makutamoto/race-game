@@ -61,6 +61,7 @@ void initGraphics(unsigned int width, unsigned int height) {
 	screenLength = screenSize[0] * screenSize[1];
 	halfScreenSize[0] = screenSize[0] / 2;
 	halfScreenSize[1] = screenSize[1] / 2;
+	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 }
 
 void deinitGraphics(void) {
@@ -351,11 +352,11 @@ void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vecto
 		for(i2 = 0;i2 < 3;i2++) {
 			unsigned long index;
 			index = *(unsigned long*)nextData(&indices);
-			triangle[i2] = *(Vertex*)dataAt(vertices, index);
+			triangle[i2] = *(Vertex*)dataAt(&vertices, index);
 			if(uv.length != 0) {
 				float *uvPointer;
 				index = *(unsigned long*)nextData(&uvIndices);
-				uvPointer = (float*)dataAt(uv, index);
+				uvPointer = (float*)dataAt(&uv, index);
 				triangleUV[i2][0] = uvPointer[0];
 				triangleUV[i2][1] = uvPointer[1];
 			} else {
@@ -377,6 +378,10 @@ Image initImage(unsigned int width, unsigned int height, unsigned char color, un
 	memset(image.data, color, imageSize);
 
 	return image;
+}
+
+void clearImage(Image image) {
+	memset(image.data, 0, image.width * image.height);
 }
 
 void cropImage(Image dest, Image src, unsigned int xth, unsigned int yth) {

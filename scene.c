@@ -40,6 +40,13 @@ void addIntervalEventScene(Scene *scene, unsigned int milliseconds, void (*callb
 }
 
 void resetSceneClock(Scene *scene) {
+  IntervalEventScene *interval;
+  resetIteration(&scene->intervalEvents);
+  interval = nextData(&scene->intervalEvents);
+  while(interval) {
+    interval->begin = clock();
+    interval = nextData(&scene->intervalEvents);
+  }
   scene->previousClock = clock();
 }
 
@@ -48,6 +55,7 @@ void drawScene(Scene *scene, HANDLE screen) {
   float lookAt[4][4];
   float projection[4][4];
   float camera[4][4];
+  float elapsed;
   IntervalEventScene *intervalScene;
   clearTransformation();
   genLookAtMat4(scene->camera.position, scene->camera.target, scene->camera.worldUp, lookAt);
@@ -66,8 +74,9 @@ void drawScene(Scene *scene, HANDLE screen) {
   }
   resetIteration(&scene->nodes);
   node = nextData(&scene->nodes);
+  elapsed = (float)(clock() - scene->previousClock) / CLOCKS_PER_SEC;
+  scene->previousClock = clock();
   while(node) {
-    float elapsed = (float)(clock() - scene->previousClock) / CLOCKS_PER_SEC;
     float x[3];
     mulVec3ByScalar(node->velocity, elapsed, x);
     addVec3(node->position, x, node->position);
@@ -136,7 +145,6 @@ void drawScene(Scene *scene, HANDLE screen) {
     intervalScene = nextData(&scene->intervalEvents);
   }
   flushBuffer(screen);
-  scene->previousClock = clock();
 }
 
 void discardScene(Scene *scene) {

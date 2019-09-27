@@ -6,6 +6,8 @@ typedef struct _Vector {
 	struct _VectorItem *firstItem;
 	struct _VectorItem *currentItem;
 	struct _VectorItem *lastItem;
+	struct _VectorItem *cacheItem;
+	size_t cacheIndex;
 } Vector;
 
 typedef struct _VectorItem {
@@ -21,8 +23,8 @@ void freeVector(Vector *vector);
 void resetIteration(Vector *vector);
 void* nextData(Vector *vector);
 void* previousData(Vector *vector);
-VectorItem* ItemAt(Vector vector, size_t index);
-void* dataAt(Vector vector, size_t index);
+VectorItem* ItemAt(Vector *vector, size_t index);
+void* dataAt(Vector *vector, size_t index);
 
 int push(Vector *vector, void *data);
 void* pop(Vector *vector);

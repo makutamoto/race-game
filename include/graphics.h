@@ -54,6 +54,7 @@ void fillTriangle(Vertex vertices[3], Image image, const float uv[3][2]);
 void fillPolygons(Vector vertices, Vector indices, Image image, Vector uv, Vector uvIndices);
 
 Image initImage(unsigned int width, unsigned int height, unsigned char color, unsigned char transparent);
+void clearImage(Image image);
 void cropImage(Image dest, Image src, unsigned int xth, unsigned int yth);
 void pasteImage(Image dest, Image src, unsigned int x, unsigned int y);
 BOOL drawCharSJIS(Image target, FontSJIS font, unsigned int x, unsigned int y, char *character);
