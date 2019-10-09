@@ -14,8 +14,6 @@
 #include "./include/colors.h"
 #include "./include/vector.h"
 
-#define COPY_ARY(dest, src) memcpy_s(dest, sizeof(dest), src, sizeof(src))
-
 Image NO_IMAGE;
 
 static unsigned char *buffer;
@@ -115,6 +113,11 @@ void popTransformation(void) {
 	store = (float*)pop(&matrixStore);
 	memcpy_s(transformation, sizeof(transformation), store, sizeof(transformation));
 	free(store);
+}
+
+float (*getTransformation(float out[4][4]))[4] {
+	memcpy_s(out, sizeof(transformation), transformation, sizeof(transformation));
+	return out;
 }
 
 void clearTransformation(void) {

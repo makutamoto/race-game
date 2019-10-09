@@ -24,6 +24,15 @@ float* cross(const float a[3], const float b[3], float out[3]) {
 	return out;
 }
 
+float areaOfTriangle(float triangle[3][3]) {
+  float vecA[3], vecB[3];
+  float temp[3];
+  subVec3(triangle[1], triangle[0], vecA);
+  subVec3(triangle[2], triangle[0], vecB);
+  cross(vecA, vecB, temp);
+  return length3(temp) / 2.0F;
+}
+
 float length2(const float vector[2]) {
 	return sqrtf(vector[0] * vector[0] + vector[1] * vector[1]);
 }

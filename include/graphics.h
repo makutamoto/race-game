@@ -40,6 +40,7 @@ Vertex initVertex(float x, float y, float z, unsigned char color);
 
 void pushTransformation(void);
 void popTransformation(void);
+float (*getTransformation(float out[4][4]))[4];
 void clearTransformation(void);
 void setCameraMat4(float mat[4][4]);
 void clearCameraMat4(void);

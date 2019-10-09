@@ -3,10 +3,13 @@
 
 #define PI  3.14159265359F
 
+#define COPY_ARY(dest, src) memcpy_s(dest, sizeof(dest), src, sizeof(src))
+
 float dot2(const float a[2], const float b[2]);
 float dot3(const float a[3], const float b[3]);
 float dot4(const float a[4], const float b[4]);
 float* cross(const float a[3], const float b[3], float out[3]);
+float areaOfTriangle(float triangle[3][3]);
 float length2(const float vector[2]);
 float length3(const float vector[3]);
 float distance2(const float a[2], const float b[2]);

@@ -7,9 +7,12 @@
 #include "./include/borland.h"
 #include "./include/graphics.h"
 #include "./include/vector.h"
+#include "./include/matrix.h"
 
 #define OBJ_LINE_BUFFER_SIZE 128
 #define OBJ_WORD_BUFFER_SIZE 32
+
+#define sign(x) ((x) < 0 ? -1 : ((x) > 0 ? 1 : 0))
 
 Node initNode(const char *id, Image image) {
   Node node;
@@ -57,6 +60,7 @@ void drawNode(Node *node) {
   } else {
     scaleTransformation(node->scale[0], node->scale[1], node->scale[2]);
   }
+  getTransformation(node->lastTransformation);
   clearAABB();
 	fillPolygons(node->shape.vertices, node->shape.indices, node->texture, node->shape.uv, node->shape.uvIndices);
   getAABB(node->aabb);
@@ -74,6 +78,226 @@ int testCollision(Node a, Node b) {
   return (a.aabb[0][0] <= b.aabb[0][1] && a.aabb[0][1] >= b.aabb[0][0]) &&
          (a.aabb[1][0] <= b.aabb[1][1] && a.aabb[1][1] >= b.aabb[1][0]) &&
          (a.aabb[2][0] <= b.aabb[2][1] && a.aabb[2][1] >= b.aabb[2][0]);
+}
+
+int calcPlaneEquation(const float triangle[3][3], const float target[3][3], float n[3], float *d, float dv[3]) {
+  float temp[2][3];
+  cross(subVec3(triangle[1], triangle[0], temp[0]), subVec3(triangle[2], triangle[0], temp[1]), n);
+  *d = dot3(mulVec3ByScalar(n, -1.0F, temp[0]), triangle[0]);
+  dv[0] = dot3(n, target[0]) + *d;
+  dv[1] = dot3(n, target[1]) + *d;
+  dv[2] = dot3(n, target[2]) + *d;
+  if(dv[0] != 0 && dv[1] != 0 && dv[2] != 0) {
+    int signDv1 = sign(dv[1]);
+    if(sign(dv[0]) == signDv1 && signDv1 == sign(dv[2])) {
+      return -1;
+    }
+  }
+  return 0;
+}
+
+void calcLineParameters(const float triangle[3][3], const float d[3], const float dv[3], float t[2]) {
+  float pv[3];
+  int signA, signB, signC;
+  int indexA, indexB, indexC;
+  signA = sign(dv[0]);
+  signB = sign(dv[1]);
+  signC = sign(dv[2]);
+  if(signA == signB) {
+    indexA = 0;
+    indexB = 2;
+    indexC = 1;
+  } else if(signB == signC) {
+    indexA = 1;
+    indexB = 0;
+    indexC = 2;
+  } else {
+    indexA = 0;
+    indexB = 1;
+    indexC = 2;
+  }
+  pv[0] = dot3(d, triangle[0]);
+  pv[1] = dot3(d, triangle[1]);
+  pv[2] = dot3(d, triangle[2]);
+  t[0] = pv[indexA] + (pv[indexB] - pv[indexA]) * dv[indexA] / (dv[indexA] - dv[indexB]);
+  t[1] = pv[indexC] + (pv[indexB] - pv[indexC]) * dv[indexC] / (dv[indexC] - dv[indexB]);
+}
+
+void projectTriangleOnAxes(const float triangle[3][3], int indexA, int indexB, float out[3][3]) {
+  out[0][0] = triangle[0][indexA];
+  out[0][1] = triangle[0][indexB];
+  out[0][2] = 0.0F;
+  out[1][0] = triangle[1][indexA];
+  out[1][1] = triangle[1][indexB];
+  out[1][2] = 0.0F;
+  out[2][0] = triangle[2][indexA];
+  out[2][1] = triangle[2][indexB];
+  out[2][2] = 0.0F;
+}
+
+int testLine2dIntersection(const float lineA[2][3], const float lineB[2][3]) {
+  float denominator;
+  float uA, uB;
+  denominator = (lineB[1][1] - lineB[0][1]) * (lineA[1][0] - lineA[0][0]) - (lineB[1][0] - lineB[0][0]) * (lineA[1][1] - lineA[0][1]);
+  if(denominator == 0.0F) return FALSE;
+  uA = ((lineB[1][0] - lineB[0][0]) * (lineA[0][1] - lineB[0][1]) - (lineB[1][1] - lineB[0][1]) * (lineA[0][0] - lineB[0][0])) / denominator;
+  uB = ((lineA[1][0] - lineA[0][0]) * (lineA[0][1] - lineB[0][1]) - (lineA[1][1] - lineA[0][1]) * (lineA[0][0] - lineB[0][0])) / denominator;
+  if((0.0F <= uA && uA <= 1.0F) && (0.0F <= uB && uB <= 1.0F)) return TRUE;
+  return FALSE;
+}
+
+void edgesOfTriangle(const float triangle[3][3], float out[3][2][3]) {
+  COPY_ARY(out[0][0], triangle[0]);
+  COPY_ARY(out[0][1], triangle[1]);
+  COPY_ARY(out[1][0], triangle[1]);
+  COPY_ARY(out[1][1], triangle[2]);
+  COPY_ARY(out[2][0], triangle[2]);
+  COPY_ARY(out[2][1], triangle[0]);
+}
+
+int pointInTriangle(const float triangle[3][3], const float point[3]) {
+  float temp[3][3];
+  float zA, zB, zC;
+  float signB;
+  zA = cross(subVec3(triangle[1], triangle[0], temp[0]), subVec3(point, triangle[0], temp[1]), temp[2])[2];
+  zB = cross(subVec3(triangle[2], triangle[1], temp[0]), subVec3(point, triangle[1], temp[1]), temp[2])[2];
+  zC = cross(subVec3(triangle[0], triangle[2], temp[0]), subVec3(point, triangle[2], temp[1]), temp[2])[2];
+  signB = sign(zB);
+  return sign(zA) == signB && signB == sign(zC);
+}
+
+int testCollisionTriangleTriangle(const float a[3][3], const float b[3][3]) {
+  // using Moller's algorithm: A Fast Triangle-Triangle Intersection Test
+  float n1[3], n2[3];
+  float d1, d2;
+  float dv1[3], dv2[3];
+  if(calcPlaneEquation(b, a, n2, &d2, dv2) || calcPlaneEquation(a, b, n1, &d1, dv1)) return FALSE;
+  if(dv1[0] == 0 && dv1[1] == 0 && dv1[2] == 0) {
+    int i;
+    float triangleAOnAxes[3][3][3], triangleBOnAxes[3][3][3];
+    float areas[3];
+    float triangleAEdges[3][2][3], triangleBEdges[3][2][3];
+    int triangleIndex;
+    projectTriangleOnAxes(a, 0, 1, triangleAOnAxes[0]);
+    projectTriangleOnAxes(a, 1, 2, triangleAOnAxes[1]);
+    projectTriangleOnAxes(a, 2, 0, triangleAOnAxes[2]);
+    projectTriangleOnAxes(a, 0, 1, triangleBOnAxes[0]);
+    projectTriangleOnAxes(a, 1, 2, triangleBOnAxes[1]);
+    projectTriangleOnAxes(a, 2, 0, triangleBOnAxes[2]);
+    areas[0] = areaOfTriangle(triangleAOnAxes[0]);
+    areas[1] = areaOfTriangle(triangleAOnAxes[1]);
+    areas[2] = areaOfTriangle(triangleAOnAxes[2]);
+    if(areas[0] > areas[1]) {
+      if(areas[0] > areas[2]) {
+        triangleIndex = 0;
+      } else {
+        triangleIndex = 2;
+      }
+    } else {
+      if(areas[1] > areas[2]) {
+        triangleIndex = 1;
+      } else {
+        triangleIndex = 2;
+      }
+    }
+    edgesOfTriangle(triangleAOnAxes[triangleIndex], triangleAEdges);
+    edgesOfTriangle(triangleBOnAxes[triangleIndex], triangleBEdges);
+    for(i = 0;i < 3;i++) {
+      if(testLine2dIntersection(triangleAEdges[i], triangleBEdges[0]) ||
+        testLine2dIntersection(triangleAEdges[i], triangleBEdges[1]) ||
+        testLine2dIntersection(triangleAEdges[i], triangleBEdges[2])) {
+          return TRUE;
+      }
+    }
+    if(pointInTriangle(triangleAOnAxes[triangleIndex], triangleBOnAxes[triangleIndex][0])
+      || pointInTriangle(triangleBOnAxes[triangleIndex], triangleAOnAxes[triangleIndex][0])) return TRUE;
+  } else {
+    float d[3];
+    float t1[2], t2[2];
+    float t1MinMax[2], t2MinMax[2];
+    cross(n1, n2, d);
+    calcLineParameters(a, d, dv1, t1);
+    calcLineParameters(b, d, dv2, t2);
+    if(t1[0] > t1[1]) {
+      t1MinMax[0] = t1[1];
+      t1MinMax[1] = t1[0];
+    } else {
+      t1MinMax[0] = t1[0];
+      t1MinMax[1] = t1[1];
+    }
+    if(t2[0] > t2[1]) {
+      t2MinMax[0] = t2[1];
+      t2MinMax[1] = t2[0];
+    } else {
+      t2MinMax[0] = t2[0];
+      t2MinMax[1] = t2[1];
+    }
+    if(!(t1MinMax[1] < t2MinMax[0] || t2MinMax[1] < t1MinMax[0])) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+float (*mulMat4ByTriangle(float mat[4][4], float triangle[3][3], float out[3][3]))[3] {
+  int i;
+  for(i = 0;i < 3;i++) {
+    float point[4];
+    float transformed[4];
+    COPY_ARY(point, triangle[i]);
+    point[3] = 1.0F;
+    mulMat4Vec4(mat, point, transformed);
+    out[i][0] = transformed[0];
+    out[i][1] = transformed[1];
+    out[i][2] = transformed[2];
+  }
+  return out;
+}
+
+Vector* getPolygons(Node node, Vector *polygons) {
+	size_t i1, i2;
+	resetIteration(&node.shape.indices);
+	for(i1 = 0;i1 < node.shape.indices.length / 3;i1++) {
+		float *triangle = malloc(9 * sizeof(float));
+		for(i2 = 0;i2 < 3;i2++) {
+			unsigned long index = *(unsigned long*)nextData(&node.shape.indices);
+      float *data = dataAt(&node.shape.vertices, index);
+      triangle[i2 * 3] = data[0];
+      triangle[i2 * 3 + 1] = data[1];
+      triangle[i2 * 3 + 2] = data[2];
+		}
+    push(polygons, triangle);
+	}
+  return polygons;
+}
+
+int testCollisionPolygonPolygon(Node a, Node b) {
+  Vector polygonsA = initVector();
+  Vector polygonsB = initVector();
+  float *polygonA, *polygonB;
+  getPolygons(a, &polygonsA);
+  getPolygons(b, &polygonsB);
+  polygonA = nextData(&polygonsA);
+  while(polygonA) {
+    float polygonAWorld[3][3];
+    mulMat4ByTriangle(a.lastTransformation, (float (*)[3])polygonA, polygonAWorld);
+    resetIteration(&polygonsB);
+    polygonB = nextData(&polygonsB);
+    while(polygonB) {
+      float polygonBWorld[3][3];
+      mulMat4ByTriangle(b.lastTransformation, (float (*)[3])polygonB, polygonBWorld);
+      if(testCollisionTriangleTriangle(polygonAWorld, polygonBWorld)) {
+        freeVector(&polygonsA);
+        freeVector(&polygonsB);
+        return TRUE;
+      }
+      polygonB = nextData(&polygonsB);
+    }
+    polygonA = nextData(&polygonsA);
+  }
+  freeVector(&polygonsA);
+  freeVector(&polygonsB);
+  return FALSE;
 }
 
 void addIntervalEventNode(Node *node, unsigned int milliseconds, void (*callback)(Node*)) {

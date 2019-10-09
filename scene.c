@@ -85,15 +85,17 @@ void drawScene(Scene *scene, HANDLE screen) {
       VectorItem *item = scene->nodes.currentItem;
       collisionTarget = (Node*)nextData(&scene->nodes);
       while(collisionTarget) {
-        if(testCollision(*node, *collisionTarget)) {
-          unsigned int flagsA = node->collisionMaskPassive & collisionTarget->collisionMaskActive;
-          unsigned int flagsB = node->collisionMaskActive & collisionTarget->collisionMaskPassive;
-          unsigned int flags = flagsA | flagsB;
-          if(flags) {
-            push(&node->collisionTargets, collisionTarget);
-            push(&collisionTarget->collisionTargets, node);
-            node->collisionFlags |= flags;
-            collisionTarget->collisionFlags |= flags;
+        unsigned int flagsA = node->collisionMaskPassive & collisionTarget->collisionMaskActive;
+        unsigned int flagsB = node->collisionMaskActive & collisionTarget->collisionMaskPassive;
+        unsigned int flags = flagsA | flagsB;
+        if(flags) {
+          if(testCollision(*node, *collisionTarget)) {
+            if(testCollisionPolygonPolygon(*node, *collisionTarget)) {
+              push(&node->collisionTargets, collisionTarget);
+              push(&collisionTarget->collisionTargets, node);
+              node->collisionFlags |= flags;
+              collisionTarget->collisionFlags |= flags;
+            }
           }
         }
         collisionTarget = (Node*)nextData(&scene->nodes);

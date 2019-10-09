@@ -20,6 +20,7 @@ typedef struct _Node {
 	float position[3];
 	float angle[3];
 	float scale[3];
+	float lastTransformation[4][4];
 	float aabb[3][2];
 	Image texture;
 	Shape shape;
@@ -47,6 +48,7 @@ void discardNode(Node node);
 
 void drawNode(Node *node);
 int testCollision(Node a, Node b);
+int testCollisionPolygonPolygon(Node a, Node b);
 void addIntervalEventNode(Node *node, unsigned int milliseconds, void (*callback)(Node*));
 
 Shape initShapePlane(float width, float height, unsigned char color);
