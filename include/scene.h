@@ -36,7 +36,7 @@ Camera initCamera(float x, float y, float z, float aspect);
 Scene initScene(void);
 void addIntervalEventScene(Scene *scene, unsigned int milliseconds, void (*callback)(Scene*));
 void resetSceneClock(Scene *scene);
-void drawScene(Scene *scene, HANDLE screen);
+void drawScene(Scene *scene);
 void discardScene(Scene *scene);
 
 #endif

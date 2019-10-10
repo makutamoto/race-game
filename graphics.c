@@ -16,6 +16,8 @@
 
 Image NO_IMAGE;
 
+static HANDLE screen;
+
 static unsigned char *buffer;
 static float *zBuffer;
 static unsigned int bufferSize[2];
@@ -45,7 +47,29 @@ FontSJIS initFontSJIS(Image font0201, Image font0208, unsigned int width0201, un
 	return font;
 }
 
+static void initScreen(short width, short height) {
+	CONSOLE_CURSOR_INFO info = { 1, FALSE };
+	COORD bufferSize;
+	#ifndef __BORLANDC__
+	CONSOLE_FONT_INFOEX font = { sizeof(CONSOLE_FONT_INFOEX) };
+	#endif
+	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
+	SetConsoleActiveScreenBuffer(screen);
+	#ifndef __BORLANDC__
+	GetCurrentConsoleFontEx(screen, FALSE, &font);
+	font.dwFontSize.X = 1;
+	font.dwFontSize.Y = 2;
+	SetCurrentConsoleFontEx(screen, FALSE, &font);
+	// Specify font family.
+	#endif
+	bufferSize.X = 2 * width;
+	bufferSize.Y = height;
+	SetConsoleScreenBufferSize(screen, bufferSize);
+	SetConsoleCursorInfo(screen, &info);
+}
+
 void initGraphics(unsigned int width, unsigned int height) {
+	initScreen(width, height);
 	bufferSize[0] = 2 * width;
 	bufferSize[1] = height;
 	bufferLength = bufferSize[0] * bufferSize[1];
@@ -75,7 +99,7 @@ void clearZBuffer(void) {
 	for(i = 0;i < bufferLength;i++) zBuffer[i] = FLT_MAX;
 }
 
-void flushBuffer(HANDLE screen) {
+void flushBuffer(void) {
 	DWORD nofWritten;
 	static COORD cursor = { 0, 0 };
 	WORD *data = (WORD*)malloc(bufferLength * sizeof(WORD));

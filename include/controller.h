@@ -16,9 +16,10 @@ typedef struct {
   float *dest;
 } ControllerEvent;
 
+void initInput(void);
 Controller initController(void);
 ControllerEvent initControllerEvent(WORD key, float down, float up, float *dest);
 void initControllerEventCross(ControllerEvent events[4], WORD up, WORD left, WORD down, WORD right, float dest[2]);
-void updateController(Controller controller, HANDLE input);
+void updateController(Controller controller);
 
 #endif

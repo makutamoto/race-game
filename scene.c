@@ -50,7 +50,7 @@ void resetSceneClock(Scene *scene) {
   scene->previousClock = clock();
 }
 
-void drawScene(Scene *scene, HANDLE screen) {
+void drawScene(Scene *scene) {
   Node *node;
   float lookAt[4][4];
   float projection[4][4];
@@ -146,7 +146,7 @@ void drawScene(Scene *scene, HANDLE screen) {
     }
     intervalScene = nextData(&scene->intervalEvents);
   }
-  flushBuffer(screen);
+  flushBuffer();
 }
 
 void discardScene(Scene *scene) {

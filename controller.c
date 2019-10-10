@@ -5,7 +5,12 @@
 
 #define NOF_MAX_EVENTS 10
 
+static HANDLE input;
 static INPUT_RECORD inputRecords[NOF_MAX_EVENTS];
+
+void initInput(void) {
+  input = GetStdHandle(STD_INPUT_HANDLE);
+}
 
 Controller initController(void) {
   Controller controller = { 0 };
@@ -28,7 +33,7 @@ void initControllerEventCross(ControllerEvent events[4], WORD up, WORD left, WOR
   events[3] = initControllerEvent(right, 1.0F, 0.0F, &dest[0]);
 }
 
-void updateController(Controller controller, HANDLE input) {
+void updateController(Controller controller) {
   int i;
 	DWORD nofEvents;
 	KEY_EVENT_RECORD *keyEvent;

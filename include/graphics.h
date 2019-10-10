@@ -34,7 +34,7 @@ void initGraphics(unsigned int width, unsigned int height);
 void deinitGraphics(void);
 void clearBuffer(unsigned char color);
 void clearZBuffer(void);
-void flushBuffer(HANDLE screen);
+void flushBuffer(void);
 
 Vertex initVertex(float x, float y, float z, unsigned char color);
 

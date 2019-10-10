@@ -1,20 +1,9 @@
 #include<stdio.h>
 #include<math.h>
-#include<Windows.h>
 #include<time.h>
+#include<Windows.h>
 
-#include "./include/borland.h"
-#include "./include/matrix.h"
-#include "./include/graphics.h"
-#include "./include/colors.h"
-#include "./include/scene.h"
-#include "./include/node.h"
-#include "./include/vector.h"
-#include "./include/controller.h"
-
-#ifndef __BORLANDC__
-#pragma comment(lib, "Winmm.lib")
-#endif
+#include "./include/cnsg.h"
 
 #define SCREEN_SIZE 128
 #define FRAME_PER_SECOND 60
@@ -23,8 +12,6 @@
 #define ENEMY_BULLET_COLLISIONMASK 0x02
 #define OBSTACLE_COLLISIONMASK 0x04
 
-static HANDLE input;
-static HANDLE screen;
 static struct {
 	float move[2];
 	float direction[2];
@@ -81,27 +68,6 @@ typedef struct {
 	unsigned int hp;
 	Node *bar;
 } Enemy1;
-
-static void initScreen(short width, short height) {
-	CONSOLE_CURSOR_INFO info = { 1, FALSE };
-	COORD bufferSize;
-	#ifndef __BORLANDC__
-	CONSOLE_FONT_INFOEX font = { sizeof(CONSOLE_FONT_INFOEX) };
-	#endif
-	screen = CreateConsoleScreenBuffer(GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
-	SetConsoleActiveScreenBuffer(screen);
-	#ifndef __BORLANDC__
-	GetCurrentConsoleFontEx(screen, FALSE, &font);
-	font.dwFontSize.X = 1;
-	font.dwFontSize.Y = 2;
-	SetCurrentConsoleFontEx(screen, FALSE, &font);
-	// Specify font family.
-	#endif
-	bufferSize.X = 2 * width;
-	bufferSize.Y = height;
-	SetConsoleScreenBufferSize(screen, bufferSize);
-	SetConsoleCursorInfo(screen, &info);
-}
 
 static void explosionInterval(Node *node) {
 	Explosion *explosion = node->data;
@@ -337,9 +303,7 @@ static void sceneInterval() {
 }
 
 static void initialize(void) {
-	input = GetStdHandle(STD_INPUT_HANDLE);
-	initScreen(SCREEN_SIZE, SCREEN_SIZE);
-	initGraphics(SCREEN_SIZE, SCREEN_SIZE);
+	initCNSG(SCREEN_SIZE, SCREEN_SIZE);
 	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
 
 	keyboard = initController();
@@ -477,7 +441,7 @@ int main(void) {
 	startGame();
 	previousClock = clock();
 	while(TRUE) {
-		updateController(keyboard, input);
+		updateController(keyboard);
 		if(controller.quit) break;
 		if(start) {
 			if(controller.action) {
@@ -487,7 +451,7 @@ int main(void) {
 				autoControl();
 			}
 		}
-		drawScene(&scene, screen);
+		drawScene(&scene);
 		if(heroHP <= 0) {
 			if(controller.retry) startGame();
 		}
