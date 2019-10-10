@@ -3,7 +3,7 @@
 #include<time.h>
 #include<Windows.h>
 
-#include "./include/cnsg.h"
+#include "./cnsglib/include/cnsg.h"
 
 #define SCREEN_SIZE 128
 #define FRAME_PER_SECOND 60

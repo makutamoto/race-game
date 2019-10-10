@@ -10,16 +10,23 @@ bcc32: ./game-bcc32.exe
 
 clean:
 	del objs\*.o objs\*.obj
+	cd cnsglib && make clean
 
-game-clang.exe: $(OBJS_CLANG)
-	clang ./objs/*.o -o game-clang.exe
+game-clang.exe: cnsglib-clang $(OBJS_CLANG)
+	clang ./objs/*.o ./cnsglib/objs/*.o -o game-clang.exe
 
-objs/%.o: %.c ./include/*.h
+cnsglib-clang:
+	cd cnsglib && make
+
+objs/%.o: %.c
 	clang -Wall -c $< -o $@ -Wno-invalid-source-encoding
 
-game-bcc32.exe: $(OBJS_BCC32)
-	bcc32 -egame-bcc32.exe ./objs/*.obj
+game-bcc32.exe: cnsglib-bcc32 $(OBJS_BCC32)
+	bcc32 -egame-bcc32.exe ./objs/*.obj ./cnsglib/objs/*.obj
 	del game-bcc32.tds
 
-objs/%.obj: %.c ./include/*.h
+cnsglib-bcc32:
+	cd cnsglib && make bcc32
+
+objs/%.obj: %.c
 	bcc32 -wAll -o"$@" -c $<

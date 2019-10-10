@@ -1,0 +1,3 @@
+[submodule "cnsglib"]
+	path = cnsglib
+	url = ../cnsglib
