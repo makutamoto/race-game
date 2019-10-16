@@ -11,6 +11,7 @@
 #define HERO_BULLET_COLLISIONMASK 0x01
 #define ENEMY_BULLET_COLLISIONMASK 0x02
 #define OBSTACLE_COLLISIONMASK 0x04
+#define STAGE_COLLISIONMASK 0x08
 
 static struct {
 	float move[2];
@@ -256,9 +257,9 @@ static int heroBehaviour(Node *node) {
 		mulVec2ByScalar(controller.move, 200.0F, move);
 	}
 	node->velocity[0] = move[0];
-	node->velocity[1] = move[1];
-	node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
-	node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
+	node->velocity[2] = move[1];
+	// node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
+	// node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
 	if(controller.action || (start && autoAction)) {
 		static clock_t previousClock;
 		if((clock() - previousClock) * 1000 / CLOCKS_PER_SEC > 500) {
@@ -279,27 +280,27 @@ static int scoreBehaviour(Node *node) {
 }
 
 static void sceneInterval() {
-	if(heroHP > 0) {
-		int x, y;
-		for(x = 0;x < 3;x++) {
-			for(y = 0;y < 3;y++) {
-				float cx = 200.0F / 3.0F * x - 100.0F;
-				float cy = 200.0F / 3.0F * y - 60.0F;
-				switch(rand() % 4) {
-					case 0:
-						spawnStone(cx, cy, 500.0F);
-						break;
-					case 1:
-						spawnEnemy1(cx, cy, 500.0F);
-						break;
-					case 2:
-					case 3:
-						break;
-				}
-			}
-		}
-		score += 5;
-	}
+	// if(heroHP > 0) {
+	// 	int x, y;
+	// 	for(x = 0;x < 3;x++) {
+	// 		for(y = 0;y < 3;y++) {
+	// 			float cx = 200.0F / 3.0F * x - 100.0F;
+	// 			float cy = 200.0F / 3.0F * y - 60.0F;
+	// 			switch(rand() % 4) {
+	// 				case 0:
+	// 					spawnStone(cx, cy, 500.0F);
+	// 					break;
+	// 				case 1:
+	// 					spawnEnemy1(cx, cy, 500.0F);
+	// 					break;
+	// 				case 2:
+	// 				case 3:
+	// 					break;
+	// 			}
+	// 		}
+	// 	}
+	// 	score += 5;
+	// }
 }
 
 static void initialize(void) {
@@ -329,7 +330,8 @@ static void initialize(void) {
 	stage = loadBitmap("assets/stage.bmp", NULL_COLOR);
 	explosionImage = loadBitmap("./assets/explosion.bmp", NULL_COLOR);
 	scene = initScene();
-	scene.camera = initCamera(0.0F, 0.0F, -100.0F, 1.0F);
+	scene.camera = initCamera(0.0F, 50.0F, -100.0F, 1.0F);
+	// scene.camera.parent = &heroNode;
 	scene.background = DARK_BLUE;
 	addIntervalEventScene(&scene, 5000, sceneInterval);
 	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj");
@@ -343,18 +345,25 @@ static void initialize(void) {
 	initShapeFromObj(&stageNode.shape, "./assets/test.obj");
 	stageNode.position[1] = -100.0F;
 	stageNode.position[2] = 0.0F;
-	stageNode.scale[0] = 10.0F;
-	stageNode.scale[2] = 10.0F;
+	stageNode.scale[0] = 3.0F;
+	stageNode.scale[2] = 3.0F;
+	// stageNode.angle[2] = -0.5F;
+	stageNode.collisionMaskActive = STAGE_COLLISIONMASK;
+	// stageNode.shape.mass = 100.0F;
 	lifeBarNode.position[0] = 2.5F;
 	lifeBarNode.position[1] = 2.5F;
 	lifeBarNode.scale[0] = 30.0F;
 	lifeBarNode.scale[1] = 5.0F;
 	heroNode = initNode("Hero", hero);
+	// heroNode.shape = initShapeBox(1.0F, 1.0F, 1.0F, RED);
 	initShapeFromObj(&heroNode.shape, "./assets/hero.obj");
+	// heroNode.shape.mass = 100.0F;
+	heroNode.isPhysicsEnabled = TRUE;
 	heroNode.scale[0] = 32.0F;
 	heroNode.scale[1] = 32.0F;
 	heroNode.scale[2] = 32.0F;
-	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK | OBSTACLE_COLLISIONMASK;
+	// heroNode.angle[2] = -1.0F;
+	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK | OBSTACLE_COLLISIONMASK | STAGE_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
 	rayNode = initNode("ray", NO_IMAGE);
 	rayNode.shape = initShapeBox(3, 3, 512, RED);
@@ -399,8 +408,7 @@ static void startGame(void) {
 	push(&scene.nodes, &lifeBarNode);
 	push(&scene.nodes, &scoreNode);
 	push(&scene.nodes, &heroNode);
-	// push(&scene.nodes, &stageNode);
-	resetSceneClock(&scene);
+	push(&scene.nodes, &stageNode);
 	sceneInterval();
 	score = 0;
 }
@@ -435,13 +443,33 @@ static void deinitialize(void) {
 	deinitGraphics();
 }
 
+float elapsedTime(LARGE_INTEGER start, LARGE_INTEGER frequency) {
+	LARGE_INTEGER current;
+	LARGE_INTEGER elapsed;
+	QueryPerformanceCounter(&current);
+	elapsed.QuadPart = current.QuadPart - start.QuadPart;
+	return (float)elapsed.QuadPart / frequency.QuadPart;
+}
+
 int main(void) {
-	clock_t previousClock;
+	LARGE_INTEGER previousClock;
+	LARGE_INTEGER frequency;
+	QueryPerformanceFrequency(&frequency);
 	initialize();
 	startGame();
-	previousClock = clock();
+	QueryPerformanceCounter(&previousClock);
 	while(TRUE) {
+		LARGE_INTEGER previousSceneClock;
 		updateController(keyboard);
+		drawScene(&scene);
+		updateScene(&scene, 1.0F / FRAME_PER_SECOND);
+		QueryPerformanceCounter(&previousSceneClock);
+		while(elapsedTime(previousClock, frequency) < 1.0F / FRAME_PER_SECOND) {
+			if(elapsedTime(previousSceneClock, frequency) < 0.001F) continue;
+			// updateScene(&scene, elapsedTime(previousSceneClock, frequency));
+			QueryPerformanceCounter(&previousSceneClock);
+		};
+		QueryPerformanceCounter(&previousClock);
 		if(controller.quit) break;
 		if(start) {
 			if(controller.action) {
@@ -451,12 +479,6 @@ int main(void) {
 				autoControl();
 			}
 		}
-		drawScene(&scene);
-		if(heroHP <= 0) {
-			if(controller.retry) startGame();
-		}
-		while(clock() - previousClock < CLOCKS_PER_SEC / FRAME_PER_SECOND);
-		previousClock = clock();
 	}
 	deinitialize();
 	return 0;
