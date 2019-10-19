@@ -56,7 +56,7 @@ static Node stageNode;
 static Node gameoverNode;
 static Node startNode;
 
-BOOL start = TRUE;
+BOOL start = FALSE;
 static unsigned int heroHP;
 static unsigned int score;
 
@@ -256,8 +256,8 @@ static int heroBehaviour(Node *node) {
 	} else {
 		mulVec2ByScalar(controller.move, 200.0F, move);
 	}
-	node->velocity[0] = move[0];
-	node->velocity[2] = move[1];
+	node->force[0] += move[0];
+	node->force[2] += move[1];
 	// node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
 	// node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
 	if(controller.action || (start && autoAction)) {
@@ -347,7 +347,7 @@ static void initialize(void) {
 	stageNode.position[2] = 0.0F;
 	stageNode.scale[0] = 3.0F;
 	stageNode.scale[2] = 3.0F;
-	// stageNode.angle[2] = -0.5F;
+	stageNode.angle[2] = -0.5F;
 	stageNode.collisionMaskActive = STAGE_COLLISIONMASK;
 	// stageNode.shape.mass = 100.0F;
 	lifeBarNode.position[0] = 2.5F;
@@ -400,6 +400,7 @@ static void startGame(void) {
 	heroNode.position[0] = 0.0F;
 	heroNode.position[1] = 0.0F;
 	heroNode.position[2] = 0.0F;
+	clearVec3(heroNode.velocity);
 
 	srand(0);
 
@@ -479,6 +480,7 @@ int main(void) {
 				autoControl();
 			}
 		}
+		if(controller.retry) startGame();
 	}
 	deinitialize();
 	return 0;
