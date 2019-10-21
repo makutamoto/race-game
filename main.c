@@ -256,8 +256,22 @@ static int heroBehaviour(Node *node) {
 	} else {
 		mulVec2ByScalar(controller.move, 200.0F, move);
 	}
-	node->force[0] += move[0];
-	node->force[2] += move[1];
+	if(move[0] > 0.0F) {
+		float force[3] = { 100.0F, 100.0F, 0.0F };
+		applyForce(node, force, X_MASK | Z_MASK);
+		node->torque[1] += 200.0F;
+	} else if(move[0] < 0.0F) {
+		float force[3] = { -100.0F, -100.0F, 0.0F };
+		applyForce(node, force, X_MASK | Z_MASK);
+		node->torque[1] -= 200.0F;
+	}
+	if(move[1] > 0.0F) {
+		float force[3] = { 0.0F, 0.0F, 200.0F };
+		applyForce(node, force, X_MASK | Z_MASK);
+	} else if(move[1] < 0.0F) {
+		float force[3] = { 0.0F, 0.0F, -100.0F };
+		applyForce(node, force, X_MASK | Z_MASK);
+	}
 	// node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
 	// node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
 	if(controller.action || (start && autoAction)) {
@@ -327,12 +341,13 @@ static void initialize(void) {
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", NULL_COLOR);
 	stoneImage = loadBitmap("assets/stone.bmp", NULL_COLOR);
-	stage = loadBitmap("assets/stage.bmp", NULL_COLOR);
+	stage = loadBitmap("assets/course.bmp", NULL_COLOR);
 	explosionImage = loadBitmap("./assets/explosion.bmp", NULL_COLOR);
 	scene = initScene();
-	scene.camera = initCamera(0.0F, 50.0F, -100.0F, 1.0F);
-	// scene.camera.parent = &heroNode;
-	scene.background = DARK_BLUE;
+	scene.camera = initCamera(0.0F, 50.0F, -50.0F, 1.0F);
+	scene.camera.parent = &heroNode;
+	scene.camera.positionMask[1] = TRUE;
+	scene.background = BLUE;
 	addIntervalEventScene(&scene, 5000, sceneInterval);
 	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj");
 	initShapeFromObj(&stoneShape, "./assets/stone.obj");
@@ -342,12 +357,12 @@ static void initialize(void) {
 	enemyBulletShape = initShapeBox(5, 5, 30, MAGENTA);
 	lifeBarNode = initNodeUI("lifeBarNode", lifebarImage, BLACK);
 	stageNode = initNode("stage", stage);
-	initShapeFromObj(&stageNode.shape, "./assets/test.obj");
+	initShapeFromObj(&stageNode.shape, "./assets/course.obj");
+	initShapeFromObj(&stageNode.collisionShape, "./assets/courseCollision.obj");
 	stageNode.position[1] = -100.0F;
-	stageNode.position[2] = 0.0F;
-	stageNode.scale[0] = 3.0F;
-	stageNode.scale[2] = 3.0F;
-	stageNode.angle[2] = -0.5F;
+	stageNode.scale[0] = 2.0F;
+	stageNode.scale[1] = 2.0F;
+	stageNode.scale[2] = 2.0F;
 	stageNode.collisionMaskActive = STAGE_COLLISIONMASK;
 	// stageNode.shape.mass = 100.0F;
 	lifeBarNode.position[0] = 2.5F;
@@ -355,20 +370,19 @@ static void initialize(void) {
 	lifeBarNode.scale[0] = 30.0F;
 	lifeBarNode.scale[1] = 5.0F;
 	heroNode = initNode("Hero", hero);
-	// heroNode.shape = initShapeBox(1.0F, 1.0F, 1.0F, RED);
 	initShapeFromObj(&heroNode.shape, "./assets/hero.obj");
+	heroNode.collisionShape = heroNode.shape;
 	// heroNode.shape.mass = 100.0F;
 	heroNode.isPhysicsEnabled = TRUE;
-	heroNode.scale[0] = 32.0F;
-	heroNode.scale[1] = 32.0F;
-	heroNode.scale[2] = 32.0F;
-	// heroNode.angle[2] = -1.0F;
+	heroNode.scale[0] = 16.0F;
+	heroNode.scale[1] = 16.0F;
+	heroNode.scale[2] = 16.0F;
 	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK | OBSTACLE_COLLISIONMASK | STAGE_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
 	rayNode = initNode("ray", NO_IMAGE);
 	rayNode.shape = initShapeBox(3, 3, 512, RED);
 	rayNode.position[2] = 256.0F;
-	push(&heroNode.children, &rayNode);
+	// push(&heroNode.children, &rayNode);
 
 	startImage = initImage(96, 48, BLACK, BLACK);
 	startNode = initNodeUI("gameover", startImage, BLACK);
@@ -397,7 +411,7 @@ static void initialize(void) {
 static void startGame(void) {
 	heroHP = 10;
 	cropImage(lifebarImage, lifeBarBunch, 0, 10);
-	heroNode.position[0] = 0.0F;
+	heroNode.position[0] = 300.0F;
 	heroNode.position[1] = 0.0F;
 	heroNode.position[2] = 0.0F;
 	clearVec3(heroNode.velocity);
@@ -418,6 +432,7 @@ static void deinitialize(void) {
 	discardShape(heroNode.shape);
 	discardShape(rayNode.shape);
 	discardShape(stageNode.shape);
+	discardShape(stageNode.collisionShape);
 	discardShape(enemy1Shape);
 	discardShape(enemyLifeShape);
 	discardShape(heroBulletShape);
