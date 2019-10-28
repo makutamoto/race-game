@@ -9,9 +9,10 @@
 #define FRAME_PER_SECOND 60
 
 #define HERO_BULLET_COLLISIONMASK 0x01
-#define ENEMY_BULLET_COLLISIONMASK 0x02
+#define CAR_COLLISIONMASK 0x02
 #define OBSTACLE_COLLISIONMASK 0x04
 #define STAGE_COLLISIONMASK 0x08
+#define ENEMY_BULLET_COLLISIONMASK 0
 
 static struct {
 	float move[2];
@@ -25,12 +26,10 @@ static FontSJIS shnm12;
 
 static Controller keyboard;
 static ControllerEvent wasd[4], action, restart, quit;
-static float autoMove[2];
-static BOOL autoAction;
 
 static Image lifeBarBunch;
 static Image lifebarImage;
-static Image scoreImage;
+static Image speedImage;
 static Image hero;
 static Image heroBullet;
 static Image enemy1;
@@ -48,9 +47,10 @@ static Shape stoneShape;
 static Shape explosionShape;
 
 static Node lifeBarNode;
-static Node scoreNode;
+static Node speedNode;
 static Scene scene;
 static Node heroNode;
+static Node opponentNode;
 static Node rayNode;
 static Node stageNode;
 static Node gameoverNode;
@@ -58,7 +58,6 @@ static Node startNode;
 
 BOOL start = FALSE;
 static unsigned int heroHP;
-static unsigned int score;
 
 typedef struct {
 	int i;
@@ -140,7 +139,6 @@ static int enemy1Behaviour(Node *node) {
 			causeExplosion(node->position, 50.0F);
 			removeByData(&scene.nodes, node);
 			free(node);
-			score += 10;
 			return FALSE;
 		}
 	}
@@ -212,109 +210,35 @@ static void gameover(void) {
 	}
 }
 
-static void autoControl(void) {
-	Node *node;
-	autoMove[0] = 0.0F;
-	autoMove[1] = 0.0F;
-	resetIteration(&scene.nodes);
-	node = nextData(&scene.nodes);
-	while(node) {
-		float temp[2];
-		if(strcmp("enemy1", node->id) == 0) {
-			subVec2(node->position, heroNode.position, temp);
-			if(node->position[2] > 200.0F) {
-				addVec2(autoMove, temp, autoMove);
-				autoAction = TRUE;
-				break;
-			} else {
-				subVec2(autoMove, node->position, autoMove);
-			}
-		} else if(strcmp("stone", node->id) == 0 || strcmp("enemyBullet", node->id) == 0) {
-			if(node->position[2] < 200.0F) {
-				subVec2(autoMove, node->position, autoMove);
-			}
-		}
-		node = nextData(&scene.nodes);
-	}
-	normalize2(autoMove, autoMove);
-}
-
 static int heroBehaviour(Node *node) {
-	float move[2];
-	if(node->collisionFlags) {
-		if(node->collisionFlags & ENEMY_BULLET_COLLISIONMASK) heroHP -= 1;
-		if(node->collisionFlags & OBSTACLE_COLLISIONMASK) heroHP = 0;
-		cropImage(lifebarImage, lifeBarBunch, 0, heroHP);
-		if(heroHP <= 0) {
-			causeExplosion(node->position, 50.0F);
-			removeByData(&scene.nodes, node);
-			gameover();
-		}
-	}
-	if(start) {
-		mulVec2ByScalar(autoMove, 200.0F, move);
-	} else {
-		mulVec2ByScalar(controller.move, 200.0F, move);
-	}
-	if(move[0] > 0.0F) {
-		float force[3] = { 100.0F, 100.0F, 0.0F };
-		applyForce(node, force, X_MASK | Z_MASK);
-		node->torque[1] += 200.0F;
-	} else if(move[0] < 0.0F) {
-		float force[3] = { -100.0F, -100.0F, 0.0F };
-		applyForce(node, force, X_MASK | Z_MASK);
-		node->torque[1] -= 200.0F;
-	}
-	if(move[1] > 0.0F) {
-		float force[3] = { 0.0F, 0.0F, 200.0F };
-		applyForce(node, force, X_MASK | Z_MASK);
-	} else if(move[1] < 0.0F) {
-		float force[3] = { 0.0F, 0.0F, -100.0F };
-		applyForce(node, force, X_MASK | Z_MASK);
-	}
-	// node->position[0] = max(min(node->position[0], 100.0F), -100.0F);
-	// node->position[1] = max(min(node->position[1], 100.0F), -100.0F);
-	if(controller.action || (start && autoAction)) {
-		static clock_t previousClock;
-		if((clock() - previousClock) * 1000 / CLOCKS_PER_SEC > 500) {
-			shootBullet("heroBullet", heroBulletShape, node->position, node->angle[1], HERO_BULLET_COLLISIONMASK);
-			controller.action = FALSE;
-			PlaySound(TEXT("assets/laser.wav"), NULL, SND_ASYNC | SND_FILENAME);
-			previousClock = clock();
-		}
+	float tempVec3[3][3];
+	float tempMat3[1][3][3];
+	float tempMat4[1][4][4];
+	if(node->collisionFlags & STAGE_COLLISIONMASK) {
+		float velocityLengthH;
+		convMat4toMat3(genRotationMat4(node->angle[0], node->angle[1], node->angle[2], tempMat4[0]), tempMat3[0]);
+		initVec3(tempVec3[0], Z_MASK);
+		mulMat3Vec3(tempMat3[0], tempVec3[0], tempVec3[1]);
+		normalize3(extractComponents3(tempVec3[1], XZ_MASK, tempVec3[0]), tempVec3[1]);
+		extractComponents3(node->velocity, XZ_MASK, tempVec3[0]);
+		velocityLengthH = length3(tempVec3[0]);
+		mulVec3ByScalar(tempVec3[1], velocityLengthH * node->shape.mass + controller.move[1] * 300000.0F, tempVec3[0]);
+		subVec3(tempVec3[0], mulVec3ByScalar(node->velocity, node->shape.mass, tempVec3[2]), tempVec3[1]);
+		applyForce(node, tempVec3[1], XZ_MASK, FALSE);
+		if(velocityLengthH > 1.0F) node->torque[1] += controller.move[0] * 100000.0F;
 	}
 	return TRUE;
 }
 
-static int scoreBehaviour(Node *node) {
+static int speedBehaviour(Node *node) {
 	char buffer[11];
-	sprintf(buffer, "SCORE %04u", score);
-	drawTextSJIS(scoreImage, shnm12, 0, 0, buffer);
+	sprintf(buffer, "%5.1f km/h", length3(heroNode.velocity) * 3600 / 10000);
+	drawTextSJIS(speedImage, shnm12, 0, 0, buffer);
 	return TRUE;
 }
 
 static void sceneInterval() {
-	// if(heroHP > 0) {
-	// 	int x, y;
-	// 	for(x = 0;x < 3;x++) {
-	// 		for(y = 0;y < 3;y++) {
-	// 			float cx = 200.0F / 3.0F * x - 100.0F;
-	// 			float cy = 200.0F / 3.0F * y - 60.0F;
-	// 			switch(rand() % 4) {
-	// 				case 0:
-	// 					spawnStone(cx, cy, 500.0F);
-	// 					break;
-	// 				case 1:
-	// 					spawnEnemy1(cx, cy, 500.0F);
-	// 					break;
-	// 				case 2:
-	// 				case 3:
-	// 					break;
-	// 			}
-	// 		}
-	// 	}
-	// 	score += 5;
-	// }
+
 }
 
 static void initialize(void) {
@@ -337,7 +261,7 @@ static void initialize(void) {
 	lifeBarBunch = loadBitmap("assets/lifebar.bmp", NULL_COLOR);
 	lifebarImage = initImage(192, 32, BLACK, NULL_COLOR);
 	cropImage(lifebarImage, lifeBarBunch, 0, 10);
-	hero = loadBitmap("assets/hero3d.bmp", NULL_COLOR);
+	hero = loadBitmap("assets/car.bmp", NULL_COLOR);
 	heroBullet = loadBitmap("assets/heroBullet.bmp", WHITE);
 	enemy1 = loadBitmap("assets/enemy1.bmp", NULL_COLOR);
 	stoneImage = loadBitmap("assets/stone.bmp", NULL_COLOR);
@@ -349,40 +273,45 @@ static void initialize(void) {
 	scene.camera.positionMask[1] = TRUE;
 	scene.background = BLUE;
 	addIntervalEventScene(&scene, 5000, sceneInterval);
-	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj");
-	initShapeFromObj(&stoneShape, "./assets/stone.obj");
-	initShapeFromObj(&explosionShape, "./assets/explosion.obj");
+	initShapeFromObj(&enemy1Shape, "./assets/enemy1.obj", 1.0F);
+	initShapeFromObj(&stoneShape, "./assets/stone.obj", 1.0F);
+	initShapeFromObj(&explosionShape, "./assets/explosion.obj", 1.0F);
 	enemyLifeShape = initShapePlane(20, 5, RED);
 	heroBulletShape = initShapeBox(5, 5, 30, YELLOW);
 	enemyBulletShape = initShapeBox(5, 5, 30, MAGENTA);
 	lifeBarNode = initNodeUI("lifeBarNode", lifebarImage, BLACK);
 	stageNode = initNode("stage", stage);
-	initShapeFromObj(&stageNode.shape, "./assets/course.obj");
-	initShapeFromObj(&stageNode.collisionShape, "./assets/courseCollision.obj");
+	initShapeFromObj(&stageNode.shape, "./assets/course.obj", 1.0F);
+	initShapeFromObj(&stageNode.collisionShape, "./assets/courseCollision.obj", 1.0F);
 	stageNode.position[1] = -100.0F;
-	stageNode.scale[0] = 2.0F;
-	stageNode.scale[1] = 2.0F;
-	stageNode.scale[2] = 2.0F;
+	stageNode.scale[0] = 4.0F;
+	stageNode.scale[1] = 4.0F;
+	stageNode.scale[2] = 4.0F;
 	stageNode.collisionMaskActive = STAGE_COLLISIONMASK;
-	// stageNode.shape.mass = 100.0F;
 	lifeBarNode.position[0] = 2.5F;
 	lifeBarNode.position[1] = 2.5F;
 	lifeBarNode.scale[0] = 30.0F;
 	lifeBarNode.scale[1] = 5.0F;
 	heroNode = initNode("Hero", hero);
-	initShapeFromObj(&heroNode.shape, "./assets/hero.obj");
-	heroNode.collisionShape = heroNode.shape;
-	// heroNode.shape.mass = 100.0F;
+	initShapeFromObj(&heroNode.shape, "./assets/car.obj", 100.0F);
+	initShapeFromObj(&heroNode.collisionShape, "./assets/carCollision.obj", 100.0F);
 	heroNode.isPhysicsEnabled = TRUE;
 	heroNode.scale[0] = 16.0F;
 	heroNode.scale[1] = 16.0F;
 	heroNode.scale[2] = 16.0F;
-	heroNode.collisionMaskPassive = ENEMY_BULLET_COLLISIONMASK | OBSTACLE_COLLISIONMASK | STAGE_COLLISIONMASK;
+	heroNode.collisionMaskActive = CAR_COLLISIONMASK;
+	heroNode.collisionMaskPassive = CAR_COLLISIONMASK | STAGE_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
-	rayNode = initNode("ray", NO_IMAGE);
-	rayNode.shape = initShapeBox(3, 3, 512, RED);
-	rayNode.position[2] = 256.0F;
-	// push(&heroNode.children, &rayNode);
+
+	opponentNode = initNode("opponent", hero);
+	initShapeFromObj(&opponentNode.shape, "./assets/car.obj", 100.0F);
+	initShapeFromObj(&opponentNode.collisionShape, "./assets/carCollision.obj", 100.0F);
+	opponentNode.isPhysicsEnabled = TRUE;
+	opponentNode.scale[0] = 16.0F;
+	opponentNode.scale[1] = 16.0F;
+	opponentNode.scale[2] = 16.0F;
+	opponentNode.collisionMaskActive = CAR_COLLISIONMASK;
+	opponentNode.collisionMaskPassive = CAR_COLLISIONMASK | STAGE_COLLISIONMASK;
 
 	startImage = initImage(96, 48, BLACK, BLACK);
 	startNode = initNodeUI("gameover", startImage, BLACK);
@@ -390,14 +319,13 @@ static void initialize(void) {
 	startNode.scale[1] = 4800 / SCREEN_SIZE;
 	startNode.position[0] = 50 - startNode.scale[0] / 2;
 	startNode.position[1] = 50 - startNode.scale[1] / 2;
-	drawTextSJIS(startImage, shnm12, 0, 0, "SPACE SHOOTER\n\n\"SPACE\"でプレイ\n\"ESC\"で終了");
 
-	scoreImage = initImage(60, 12, BLACK, BLACK);
-	scoreNode = initNodeUI("score", scoreImage, NULL_COLOR);
-	scoreNode.position[0] = 100 - 6000 / 128;
-	scoreNode.scale[0] = 6000 / 128;
-	scoreNode.scale[1] = 1200 / 128;
-	scoreNode.behaviour = scoreBehaviour;
+	speedImage = initImage(60, 12, BLACK, BLACK);
+	speedNode = initNodeUI("speed", speedImage, NULL_COLOR);
+	speedNode.position[0] = 100 - 6000 / 128;
+	speedNode.scale[0] = 6000 / 128;
+	speedNode.scale[1] = 1200 / 128;
+	speedNode.behaviour = speedBehaviour;
 
 	gameoverImage = initImage(84, 48, BLACK, BLACK);
 	gameoverNode = initNodeUI("gameover", gameoverImage, BLACK);
@@ -405,27 +333,29 @@ static void initialize(void) {
 	gameoverNode.scale[1] = 4800 / SCREEN_SIZE;
 	gameoverNode.position[0] = 50 - gameoverNode.scale[0] / 2;
 	gameoverNode.position[1] = 50 - gameoverNode.scale[1] / 2;
-	drawTextSJIS(gameoverImage, shnm12, 0, 0, "ゲームオーバー\n\n\"R\"でリプレイ\n\"ESC\"で終了");
 }
 
 static void startGame(void) {
 	heroHP = 10;
 	cropImage(lifebarImage, lifeBarBunch, 0, 10);
-	heroNode.position[0] = 300.0F;
+	heroNode.position[0] = 600.0F;
 	heroNode.position[1] = 0.0F;
 	heroNode.position[2] = 0.0F;
 	clearVec3(heroNode.velocity);
+
+	opponentNode.position[0] = 550.0F;
+	opponentNode.position[1] = 0.0F;
+	opponentNode.position[2] = 0.0F;
 
 	srand(0);
 
 	clearVector(&scene.nodes);
 	if(start) push(&scene.nodes, &startNode);
-	push(&scene.nodes, &lifeBarNode);
-	push(&scene.nodes, &scoreNode);
+	push(&scene.nodes, &speedNode);
 	push(&scene.nodes, &heroNode);
+	push(&scene.nodes, &opponentNode);
 	push(&scene.nodes, &stageNode);
 	sceneInterval();
-	score = 0;
 }
 
 static void deinitialize(void) {
@@ -440,7 +370,7 @@ static void deinitialize(void) {
 	discardShape(stoneShape);
 	discardShape(explosionShape);
 	discardNode(lifeBarNode);
-	discardNode(scoreNode);
+	discardNode(speedNode);
 	discardNode(heroNode);
 	discardNode(stageNode);
 	discardNode(startNode);
@@ -448,7 +378,7 @@ static void deinitialize(void) {
 	freeImage(shnm12.font0208);
 	freeImage(lifeBarBunch);
 	freeImage(lifebarImage);
-	freeImage(scoreImage);
+	freeImage(speedImage);
 	freeImage(hero);
 	freeImage(heroBullet);
 	freeImage(stoneImage);
@@ -488,12 +418,7 @@ int main(void) {
 		QueryPerformanceCounter(&previousClock);
 		if(controller.quit) break;
 		if(start) {
-			if(controller.action) {
-				start = FALSE;
-				startGame();
-			} else {
-				autoControl();
-			}
+			startGame();
 		}
 		if(controller.retry) startGame();
 	}
