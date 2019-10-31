@@ -1,7 +1,7 @@
 # Blender MTL File: 'course.blend'
 # Material Count: 2
 
-newmtl LineEdge.002
+newmtl LineEdge.012
 Ns 225.000000
 Ka 1.000000 1.000000 1.000000
 Kd 0.311828 0.311828 0.311828
@@ -11,7 +11,7 @@ Ni 1.450000
 d 1.000000
 illum 2
 
-newmtl Road.003
+newmtl Road.014
 Ns 225.000000
 Ka 1.000000 1.000000 1.000000
 Kd 0.025418 0.025418 0.025418
