@@ -20,13 +20,14 @@ static struct {
 	float direction[2];
 	float action;
 	float retry;
+	float collision;
 	float quit;
 } controller;
 
 static FontSJIS shnm12;
 
 static Controller keyboard;
-static ControllerEvent wasd[4], action, restart, quit, arrow[4];
+static ControllerEvent wasd[4], action, restart, collision, quit, arrow[4];
 
 static Image hero;
 static Image course;
@@ -37,13 +38,14 @@ static Node lapNode;
 static Node lapJudgmentNodes[3];
 static Scene scene;
 static Node heroNode;
-static Node opponentNode;
+static Node opponentNode, opponentRayNode;
 static Node courseNode;
 static Node stageNode;
 
 static float cameraAngle;
 static int lapScore;
 static int previousLap = -1;
+static int collisionFlag;
 
 static int heroBehaviour(Node *node) {
 	float tempVec3[3][3];
@@ -100,10 +102,12 @@ static void initialize(void) {
 	initControllerEventCross(arrow, VK_UP, VK_LEFT, VK_DOWN, VK_RIGHT, controller.arrow);
 	action = initControllerEvent(VK_SPACE, 1.0F, 0.0F, &controller.action);
 	restart = initControllerEvent('R', 1.0F, 0.0F, &controller.retry);
+	collision = initControllerEvent(VK_F1, 1.0F, 0.0F, &controller.collision);
+
 	quit = initControllerEvent(VK_ESCAPE, 1.0F, 0.0F, &controller.quit);
 	pushUntilNull(&keyboard.events, &wasd[0], &wasd[1], &wasd[2], &wasd[3], NULL);
 	pushUntilNull(&keyboard.events, &arrow[0], &arrow[1], &arrow[2], &arrow[3], NULL);
-	pushUntilNull(&keyboard.events, &action, &restart, &quit, NULL);
+	pushUntilNull(&keyboard.events, &action, &restart, &quit, &collision, NULL);
 
 	hero = loadBitmap("assets/car.bmp", NULL_COLOR);
 	course = loadBitmap("assets/course.bmp", NULL_COLOR);
@@ -142,6 +146,14 @@ static void initialize(void) {
 	opponentNode.collisionMaskActive = CAR_COLLISIONMASK;
 	opponentNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK;
 
+	opponentRayNode = initNode("opponentRay", NO_IMAGE);
+	opponentRayNode.shape = initShapePlane(30.0F, 300.0F, BLACK, 1.0F);
+	opponentRayNode.collisionShape = opponentRayNode.shape;
+	opponentRayNode.collisionMaskPassive = LAPA_COLLISIONMASK | LAPB_COLLISIONMASK | LAPC_COLLISIONMASK;
+	opponentRayNode.isThrough = TRUE;
+	opponentRayNode.isVisible = FALSE;
+	push(&opponentNode.children, &opponentRayNode);
+
 	for(i = 0;i < 3;i++) {
 		lapJudgmentNodes[i] = initNode(lapNames[i], NO_IMAGE);
 		initShapeFromObj(&lapJudgmentNodes[i].shape, lapNames[i], 100.0F);
@@ -161,12 +173,12 @@ static void initialize(void) {
 
 static void startGame(void) {
 	heroNode.position[0] = 650.0F;
-	heroNode.position[1] = 50.0F;
+	heroNode.position[1] = 30.0F;
 	heroNode.position[2] = 0.0F;
 	clearVec3(heroNode.velocity);
 
 	opponentNode.position[0] = 600.0F;
-	opponentNode.position[1] = 50.0F;
+	opponentNode.position[1] = 30.0F;
 	opponentNode.position[2] = 0.0F;
 
 	clearVector(&scene.nodes);
@@ -219,6 +231,16 @@ int main(void) {
 		QueryPerformanceCounter(&previousClock);
 		if(controller.quit) break;
 		if(controller.retry) startGame();
+		if(controller.collision) {
+			if(!collisionFlag) {
+				int i;
+				for(i = 0;i < 3;i++) lapJudgmentNodes[i].isVisible = !lapJudgmentNodes[i].isVisible;
+				opponentRayNode.isVisible = !opponentRayNode.isVisible;
+				collisionFlag = TRUE;
+			}
+		} else {
+			collisionFlag = FALSE;
+		}
 		cameraAngle += 0.05F * controller.arrow[0];
 		scene.camera.position[0] = 50.0F * sin(cameraAngle);
 		scene.camera.position[2] = -50.0F * cos(cameraAngle);
