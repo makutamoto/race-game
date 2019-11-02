@@ -10,6 +10,7 @@
 
 #define CAR_COLLISIONMASK 0x01
 #define COURSE_COLLISIONMASK 0x02
+#define LAP_COLLISIONMASK (LAPA_COLLISIONMASK | LAPB_COLLISIONMASK | LAPC_COLLISIONMASK)
 #define LAPA_COLLISIONMASK 0x04
 #define LAPB_COLLISIONMASK 0x08
 #define LAPC_COLLISIONMASK 0x10
@@ -42,7 +43,7 @@ static Node opponentNode, opponentRayNode;
 static Node courseNode;
 static Node stageNode;
 
-static float cameraAngle;
+static float nextCameraPosition[3];
 static int lapScore;
 static int previousLap = -1;
 static int collisionFlag;
@@ -51,6 +52,7 @@ static int heroBehaviour(Node *node) {
 	float tempVec3[3][3];
 	float tempMat3[1][3][3];
 	float tempMat4[1][4][4];
+	CollisionInfo *targetInfo;
 	if(node->collisionFlags & COURSE_COLLISIONMASK) {
 		float velocityLengthH;
 		convMat4toMat3(genRotationMat4(node->angle[0], node->angle[1], node->angle[2], tempMat4[0]), tempMat3[0]);
@@ -73,6 +75,13 @@ static int heroBehaviour(Node *node) {
 			lapScore -= 1;
 		}
 		previousLap = -1;
+	}
+	iterf(&node->collisionTargets, &targetInfo) {
+		if(targetInfo->target->collisionMaskActive & LAP_COLLISIONMASK) {
+			float upper[3] = { 0.0F, 50.0F, 0.0F };
+			mulVec3ByScalar(targetInfo->normals.firstItem->data, 50.0F, nextCameraPosition);
+			addVec3(nextCameraPosition, upper, nextCameraPosition);
+		}
 	}
 	return TRUE;
 }
@@ -114,6 +123,7 @@ static void initialize(void) {
 	scene = initScene();
 	scene.camera = initCamera(0.0F, 50.0F, -50.0F, 1.0F);
 	scene.camera.parent = &heroNode;
+	scene.camera.isRotationDisabled = TRUE;
 	scene.camera.positionMask[1] = TRUE;
 	scene.background = BLUE;
 
@@ -214,15 +224,18 @@ float elapsedTime(LARGE_INTEGER start, LARGE_INTEGER frequency) {
 int main(void) {
 	LARGE_INTEGER previousClock;
 	LARGE_INTEGER frequency;
+	float tempVec3[2][3];
 	QueryPerformanceFrequency(&frequency);
 	initialize();
 	startGame();
 	QueryPerformanceCounter(&previousClock);
 	while(TRUE) {
 		LARGE_INTEGER previousSceneClock;
+		float elapsed;
 		updateController(keyboard);
 		drawScene(&scene);
-		updateScene(&scene, elapsedTime(previousClock, frequency));
+		elapsed = elapsedTime(previousClock, frequency);
+		updateScene(&scene, elapsed);
 		QueryPerformanceCounter(&previousSceneClock);
 		while(elapsedTime(previousClock, frequency) < 1.0F / FRAME_PER_SECOND) {
 			float elapsed = elapsedTime(previousSceneClock, frequency);
@@ -241,11 +254,9 @@ int main(void) {
 		} else {
 			collisionFlag = FALSE;
 		}
-		cameraAngle += 0.05F * controller.arrow[0];
-		scene.camera.position[0] = 50.0F * sin(cameraAngle);
-		scene.camera.position[2] = -50.0F * cos(cameraAngle);
 		scene.camera.fov -= 0.05F * controller.arrow[1];
 		scene.camera.fov = min(PI / 3.0F * 2.0F, max(PI / 3.0F, scene.camera.fov));
+		addVec3(scene.camera.position, mulVec3ByScalar(subVec3(nextCameraPosition, scene.camera.position, tempVec3[0]), elapsed, tempVec3[1]), scene.camera.position);
 	}
 	deinitialize();
 	return 0;
