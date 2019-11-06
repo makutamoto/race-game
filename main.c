@@ -181,7 +181,7 @@ static Node initCarRayNode(const char id[]) {
 
 static void initialize(void) {
 	int i;
-	char lapNames[3][50] = { "./assets/courseCollisionA.obj", "./assets/courseCollisionB.obj", "./assets/courseCollisionC.obj" };
+	char lapNames[3][50] = { "./assets/courseMk2CollisionA.obj", "./assets/courseMk2CollisionB.obj", "./assets/courseMk2CollisionC.obj" };
 	initCNSG(SCREEN_SIZE, SCREEN_SIZE);
 	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
 	shnm16b = initFontSJIS(loadBitmap("assets/shnm8x16rb.bmp", NULL_COLOR), loadBitmap("assets/shnmk16b.bmp", NULL_COLOR), 8, 16, 16);
@@ -200,7 +200,7 @@ static void initialize(void) {
 	pushUntilNull(&keyboard.events, &action, &restart, &quit, &collision, &backCamera, NULL);
 
 	hero = loadBitmap("assets/car.bmp", NULL_COLOR);
-	course = loadBitmap("assets/course.bmp", NULL_COLOR);
+	course = loadBitmap("assets/courseMk2.bmp", NULL_COLOR);
 	scene = initScene();
 	scene.camera = initCamera(0.0F, 50.0F, -50.0F, 1.0F);
 	scene.camera.parent = &heroNode;
@@ -209,8 +209,8 @@ static void initialize(void) {
 	scene.background = BLUE;
 
 	courseNode = initNode("course", course);
-	initShapeFromObj(&courseNode.shape, "./assets/course.obj", 1.0F);
-	initShapeFromObj(&courseNode.collisionShape, "./assets/courseCollision.obj", 1.0F);
+	initShapeFromObj(&courseNode.shape, "./assets/courseMk2.obj", 1.0F);
+	initShapeFromObj(&courseNode.collisionShape, "./assets/courseMk2Collision.obj", 1.0F);
 	setVec3(courseNode.scale, 4.0F, XYZ_MASK);
 	courseNode.collisionMaskActive = COURSE_COLLISIONMASK;
 
