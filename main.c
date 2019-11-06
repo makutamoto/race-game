@@ -48,6 +48,8 @@ static Scene resultScene;
 static Node resultNode;
 
 static float nextCameraPosition[3] = { 0.0F, 50.0F, -50.0F };
+static float currentCameraPosition[3] = { 0.0F, 50.0F, -50.0F };
+static float cameraAngle;
 static int lapScore, opponentLapScore;
 static int previousLap = -1, opponentPreviousLap = -1;
 static int collisionFlag;
@@ -266,6 +268,8 @@ static void startGame(void) {
 	heroNode.position[1] = 50.0F;
 	heroNode.position[2] = 0.0F;
 	clearVec3(heroNode.velocity);
+	clearVec3(heroNode.angle);
+	clearVec3(heroNode.angVelocity);
 
 	opponentNode.position[0] = 600.0F;
 	opponentNode.position[1] = 50.0F;
@@ -295,6 +299,8 @@ static void deinitialize(void) {
 
 int loop(float elapsed, Image *out) {
 	float tempVec3[2][3];
+	float tempMat4[1][4][4];
+	float tempMat3[1][3][3];
 	updateController(keyboard);
 	if(controller.backCamera) {
 		scene.camera.position[0] *= -1.0F;
@@ -305,7 +311,8 @@ int loop(float elapsed, Image *out) {
 		scene.camera.position[0] *= -1.0F;
 		scene.camera.position[2] *= -1.0F;
 	}
-	updateScene(&scene, elapsed);
+	updateScene(&scene, elapsed / 2.0F);
+	updateScene(&scene, elapsed / 2.0F);
 	updateScene(&resultScene, elapsed);
 	if(controller.quit) return FALSE;
 	if(controller.retry) startGame();
@@ -321,7 +328,10 @@ int loop(float elapsed, Image *out) {
 	}
 	scene.camera.fov -= 0.05F * controller.arrow[1];
 	scene.camera.fov = min(PI / 3.0F * 2.0F, max(PI / 3.0F, scene.camera.fov));
-	addVec3(scene.camera.position, mulVec3ByScalar(subVec3(nextCameraPosition, scene.camera.position, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), scene.camera.position);
+	addVec3(currentCameraPosition, mulVec3ByScalar(subVec3(nextCameraPosition, currentCameraPosition, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), currentCameraPosition);
+	cameraAngle -= 0.1F * controller.arrow[0];
+	genRotationMat4(0.0F, cameraAngle, 0.0F, tempMat4[0]);
+	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), currentCameraPosition, scene.camera.position);
 	return TRUE;
 }
 
