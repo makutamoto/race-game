@@ -14,6 +14,7 @@
 #define LAPA_COLLISIONMASK 0x04
 #define LAPB_COLLISIONMASK 0x08
 #define LAPC_COLLISIONMASK 0x10
+#define DIRT_COLLISIONMASK 0x20
 
 static struct {
 	float move[2];
@@ -41,7 +42,7 @@ static Node speedNode, lapNode, rankNode, centerNode;
 static Node lapJudgmentNodes[3];
 static Node heroNode, heroRayNode;
 static Node opponentNode, opponentRayNode;
-static Node courseNode;
+static Node courseNode, courseDirtNode;
 static Node stageNode;
 
 static Scene resultScene;
@@ -62,7 +63,8 @@ static int autoDrive(Node *node) {
 	Node *ray = node->children.firstItem->data;
 	if(ray->collisionTargets.length != 0) {
 		CollisionInfo *rayInfo = ray->collisionTargets.firstItem->data;
-		subVec3(mulVec3ByScalar(rayInfo->normals.firstItem->data, -10000.0F, tempVec3[0]), mulVec3ByScalar(node->velocity, node->shape.mass, tempVec3[1]), tempVec3[0]);
+		CollisionInfoNode2Node *info = rayInfo->info.firstItem->data;
+		subVec3(mulVec3ByScalar(info->normal, -10000.0F, tempVec3[0]), mulVec3ByScalar(node->velocity, node->shape.mass, tempVec3[1]), tempVec3[0]);
 		applyForce(node, tempVec3[0], XZ_MASK, FALSE);
 	}
 	return TRUE;
@@ -84,11 +86,16 @@ static int heroBehaviour(Node *node) {
 			normalize3(extractComponents3(tempVec3[1], XZ_MASK, tempVec3[0]), tempVec3[1]);
 			extractComponents3(node->velocity, XZ_MASK, tempVec3[0]);
 			velocityLengthH = length3(tempVec3[0]);
-			mulVec3ByScalar(tempVec3[1], velocityLengthH * node->shape.mass + controller.move[1] * 30000.0F, tempVec3[0]);
+			mulVec3ByScalar(tempVec3[1], velocityLengthH * node->shape.mass + controller.move[1] * 20000.0F, tempVec3[0]);
 			subVec3(tempVec3[0], mulVec3ByScalar(node->velocity, node->shape.mass, tempVec3[2]), tempVec3[1]);
 			applyForce(node, tempVec3[1], XZ_MASK, FALSE);
-			if(velocityLengthH > 1.0F) node->torque[1] += controller.move[0] * 30000.0F;
+			if(velocityLengthH > 1.0F) node->torque[1] += controller.move[0] * 20000.0F;
 		}
+	}
+	if(node->collisionFlags & DIRT_COLLISIONMASK) {
+		node->collisionShape.dynamicFriction = 1.0F;
+	} else {
+		node->collisionShape.dynamicFriction = 0.1F;
 	}
 	if(node->collisionFlags & LAPA_COLLISIONMASK) previousLap = 0;
 	if(node->collisionFlags & LAPB_COLLISIONMASK) previousLap = 1;
@@ -102,8 +109,9 @@ static int heroBehaviour(Node *node) {
 	}
 	iterf(&node->collisionTargets, &targetInfo) {
 		if(targetInfo->target->collisionMaskActive & LAP_COLLISIONMASK) {
+			CollisionInfoNode2Node *info = targetInfo->info.firstItem->data;
 			float upper[3] = { 0.0F, 25.0F, 0.0F };
-			mulVec3ByScalar(targetInfo->normals.firstItem->data, 50.0F, nextCameraPosition);
+			mulVec3ByScalar(info->normal, 50.0F, nextCameraPosition);
 			addVec3(nextCameraPosition, upper, nextCameraPosition);
 		}
 	}
@@ -212,7 +220,17 @@ static void initialize(void) {
 	initShapeFromObj(&courseNode.shape, "./assets/courseMk2.obj", 1.0F);
 	initShapeFromObj(&courseNode.collisionShape, "./assets/courseMk2Collision.obj", 1.0F);
 	setVec3(courseNode.scale, 4.0F, XYZ_MASK);
+	courseNode.collisionShape.dynamicFriction = 0.8F;
+	courseNode.collisionShape.rollingFriction = 0.8F;
 	courseNode.collisionMaskActive = COURSE_COLLISIONMASK;
+
+	courseDirtNode = initNode("courseDirt", NO_IMAGE);
+	initShapeFromObj(&courseDirtNode.shape, "./assets/courseMk2DirtCollision.obj", 100.0F);
+	courseDirtNode.collisionShape = courseDirtNode.shape;
+	setVec3(courseDirtNode.scale, 4.0F, XYZ_MASK);
+	courseDirtNode.collisionMaskActive = DIRT_COLLISIONMASK;
+	courseDirtNode.isVisible = FALSE;
+	courseDirtNode.isThrough = TRUE;
 
 	stageImage = loadBitmap("assets/stage.bmp", NULL_COLOR);
 	stageNode = initNode("stage", stageImage);
@@ -226,7 +244,7 @@ static void initialize(void) {
 	heroNode.isPhysicsEnabled = TRUE;
 	setVec3(heroNode.scale, 16.0F, XYZ_MASK);
 	heroNode.collisionMaskActive = CAR_COLLISIONMASK;
-	heroNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAPA_COLLISIONMASK | LAPB_COLLISIONMASK | LAPC_COLLISIONMASK;
+	heroNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAP_COLLISIONMASK | DIRT_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
 	heroRayNode = initCarRayNode("heroRay");
 	push(&heroNode.children, &heroRayNode);
@@ -279,7 +297,7 @@ static void startGame(void) {
 	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, NULL);
 	pushUntilNull(&scene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
 	pushUntilNull(&scene.nodes, &heroNode, &opponentNode, NULL);
-	push(&scene.nodes, &courseNode);
+	pushUntilNull(&scene.nodes, &courseNode, &courseDirtNode, NULL);
 	push(&scene.nodes, &stageNode);
 }
 
@@ -321,6 +339,7 @@ int loop(float elapsed, Image *out) {
 			int i;
 			for(i = 0;i < 3;i++) lapJudgmentNodes[i].isVisible = !lapJudgmentNodes[i].isVisible;
 			opponentRayNode.isVisible = !opponentRayNode.isVisible;
+			courseDirtNode.isVisible = !courseDirtNode.isVisible;
 			collisionFlag = TRUE;
 		}
 	} else {
