@@ -48,8 +48,8 @@ static Node stageNode;
 static Scene resultScene;
 static Node resultNode;
 
-static float nextCameraPosition[3] = { 0.0F, 50.0F, -50.0F };
-static float currentCameraPosition[3] = { 0.0F, 50.0F, -50.0F };
+static float nextCameraPosition[3] = { 0.0F, 25.0F, -50.0F };
+static float currentCameraPosition[3] = { 0.0F, 25.0F, -50.0F };
 static float cameraAngle;
 static int lapScore, opponentLapScore;
 static int previousLap = -1, opponentPreviousLap = -1;
@@ -86,10 +86,10 @@ static int heroBehaviour(Node *node) {
 			normalize3(extractComponents3(tempVec3[1], XZ_MASK, tempVec3[0]), tempVec3[1]);
 			extractComponents3(node->velocity, XZ_MASK, tempVec3[0]);
 			velocityLengthH = length3(tempVec3[0]);
-			mulVec3ByScalar(tempVec3[1], velocityLengthH * node->shape.mass + controller.move[1] * 20000.0F, tempVec3[0]);
+			mulVec3ByScalar(tempVec3[1], velocityLengthH * node->shape.mass + controller.move[1] * 30000.0F, tempVec3[0]);
 			subVec3(tempVec3[0], mulVec3ByScalar(node->velocity, node->shape.mass, tempVec3[2]), tempVec3[1]);
 			applyForce(node, tempVec3[1], XZ_MASK, FALSE);
-			if(velocityLengthH > 1.0F) node->torque[1] += controller.move[0] * 20000.0F;
+			if(velocityLengthH > 1.0F) node->torque[1] += controller.move[0] * velocityLengthH * 1000.0F;
 		}
 	}
 	if(node->collisionFlags & DIRT_COLLISIONMASK) {
@@ -207,7 +207,7 @@ static void initialize(void) {
 	pushUntilNull(&keyboard.events, &arrow[0], &arrow[1], &arrow[2], &arrow[3], NULL);
 	pushUntilNull(&keyboard.events, &action, &restart, &quit, &collision, &backCamera, NULL);
 
-	hero = loadBitmap("assets/car.bmp", NULL_COLOR);
+	hero = loadBitmap("assets/subaru.bmp", NULL_COLOR);
 	course = loadBitmap("assets/courseMk2.bmp", NULL_COLOR);
 	scene = initScene();
 	scene.camera = initCamera(0.0F, 50.0F, -50.0F, 1.0F);
@@ -239,10 +239,10 @@ static void initialize(void) {
 	setVec3(stageNode.scale, 4.0F, XYZ_MASK);
 
 	heroNode = initNode("Hero", hero);
-	initShapeFromObj(&heroNode.shape, "./assets/car.obj", 100.0F);
-	initShapeFromObj(&heroNode.collisionShape, "./assets/carCollision.obj", 100.0F);
+	initShapeFromObj(&heroNode.shape, "./assets/subaru.obj", 100.0F);
+	initShapeFromObj(&heroNode.collisionShape, "./assets/subaruCollision.obj", 100.0F);
 	heroNode.isPhysicsEnabled = TRUE;
-	setVec3(heroNode.scale, 16.0F, XYZ_MASK);
+	setVec3(heroNode.scale, 4.0F, XYZ_MASK);
 	heroNode.collisionMaskActive = CAR_COLLISIONMASK;
 	heroNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAP_COLLISIONMASK | DIRT_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
@@ -250,10 +250,10 @@ static void initialize(void) {
 	push(&heroNode.children, &heroRayNode);
 
 	opponentNode = initNode("opponent", hero);
-	initShapeFromObj(&opponentNode.shape, "./assets/car.obj", 100.0F);
-	initShapeFromObj(&opponentNode.collisionShape, "./assets/carCollision.obj", 100.0F);
+	initShapeFromObj(&opponentNode.shape, "./assets/subaru.obj", 100.0F);
+	initShapeFromObj(&opponentNode.collisionShape, "./assets/subaruCollision.obj", 100.0F);
 	opponentNode.isPhysicsEnabled = TRUE;
-	setVec3(opponentNode.scale, 16.0F, XYZ_MASK);
+	setVec3(opponentNode.scale, 4.0F, XYZ_MASK);
 	opponentNode.collisionMaskActive = CAR_COLLISIONMASK;
 	opponentNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAPA_COLLISIONMASK | LAPB_COLLISIONMASK | LAPC_COLLISIONMASK;
 	opponentNode.behaviour = opponentBehaviour;
