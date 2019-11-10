@@ -51,8 +51,8 @@ static Node resultNode;
 static float nextCameraPosition[3] = { 0.0F, 25.0F, -50.0F };
 static float currentCameraPosition[3] = { 0.0F, 25.0F, -50.0F };
 static float cameraAngle;
-static int lapScore, opponentLapScore;
-static int previousLap = -1, opponentPreviousLap = -1;
+static int heroLapScore, opponentLapScore;
+static int heroPreviousLap = -1, opponentPreviousLap = -1;
 static int collisionFlag;
 static int rank;
 static int isfinished;
@@ -68,6 +68,33 @@ static int autoDrive(Node *node) {
 		applyForce(node, tempVec3[0], XZ_MASK, FALSE);
 	}
 	return TRUE;
+}
+
+static void updateLapScore(unsigned int flags, int *previousLap, int *lapScore) {
+	if(flags & LAPA_COLLISIONMASK) {
+		if(*previousLap == 2) {
+			*lapScore += 1;
+		} else if(*previousLap == 1) {
+			*lapScore -= 1;
+		}
+		*previousLap = 0;
+	}
+	if(flags & LAPB_COLLISIONMASK) {
+		if(*previousLap == 0) {
+			*lapScore += 1;
+		} else if(*previousLap == 2) {
+			*lapScore -= 1;
+		}
+		*previousLap = 1;
+	}
+	if(flags & LAPC_COLLISIONMASK) {
+		if(*previousLap == 1) {
+			*lapScore += 1;
+		} else if(*previousLap == 0) {
+			*lapScore -= 1;
+		}
+		*previousLap = 2;
+	}
 }
 
 static int heroBehaviour(Node *node) {
@@ -97,16 +124,7 @@ static int heroBehaviour(Node *node) {
 	} else {
 		node->collisionShape.dynamicFriction = 0.1F;
 	}
-	if(node->collisionFlags & LAPA_COLLISIONMASK) previousLap = 0;
-	if(node->collisionFlags & LAPB_COLLISIONMASK) previousLap = 1;
-	if(node->collisionFlags & LAPC_COLLISIONMASK) {
-		if(previousLap == 1) {
-			lapScore += 1;
-		} else if(previousLap == 0) {
-			lapScore -= 1;
-		}
-		previousLap = -1;
-	}
+	updateLapScore(node->collisionFlags, &heroPreviousLap, &heroLapScore);
 	iterf(&node->collisionTargets, &targetInfo) {
 		if(targetInfo->target->collisionMaskActive & LAP_COLLISIONMASK) {
 			CollisionInfoNode2Node *info = targetInfo->info.firstItem->data;
@@ -119,16 +137,7 @@ static int heroBehaviour(Node *node) {
 }
 
 static int opponentBehaviour(Node *node) {
-	if(node->collisionFlags & LAPA_COLLISIONMASK) opponentPreviousLap = 0;
-	if(node->collisionFlags & LAPB_COLLISIONMASK) opponentPreviousLap = 1;
-	if(node->collisionFlags & LAPC_COLLISIONMASK) {
-		if(opponentPreviousLap == 1) {
-			opponentLapScore += 1;
-		} else if(opponentPreviousLap == 0) {
-			opponentLapScore -= 1;
-		}
-		opponentPreviousLap = -1;
-	}
+	updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore);
 	autoDrive(node);
 	return TRUE;
 }
@@ -142,7 +151,7 @@ static int speedBehaviour(Node *node) {
 
 static int lapBehaviour(Node *node) {
 	char buffer[8];
-	int lap = lapScore / 15 + 1;
+	int lap = heroLapScore / 45 + 1;
 	if(lap > 3) {
 		lap = 3;
 		isfinished = TRUE;
@@ -155,8 +164,8 @@ static int lapBehaviour(Node *node) {
 
 static int rankBehaviour(Node *node) {
 	static char rankList[][4] = { "1st", "2nd" };
-	if(lapScore != opponentLapScore) {
-		rank = lapScore > opponentLapScore ? 0 : 1;
+	if(heroLapScore != opponentLapScore) {
+		rank = heroLapScore > opponentLapScore ? 0 : 1;
 	}
 	drawTextSJIS(node->texture, shnm12, 0, 0, rankList[rank]);
 	return TRUE;
