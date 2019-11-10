@@ -155,7 +155,7 @@ static int lapBehaviour(Node *node) {
 	if(lap > 3) {
 		lap = 3;
 		isfinished = TRUE;
-		transition += transition * transition + 0.01F;
+		transition += min(transition * transition + 0.01F, 1.0F);
 	}
 	sprintf(buffer, "LAP %d/3", lap);
 	drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
