@@ -38,7 +38,7 @@ static Image course;
 static Image stageImage;
 
 static Scene scene;
-static Node speedNode, lapNode, rankNode, centerNode;
+static Node speedNode, lapNode, rankNode, centerNode, timeNode;
 static Node lapJudgmentNodes[3];
 static Node heroNode, heroRayNode;
 static Node opponentNode, opponentRayNode;
@@ -57,6 +57,7 @@ static int collisionFlag;
 static int rank;
 static int isfinished;
 static float transition;
+static LARGE_INTEGER startTime;
 
 static int autoDrive(Node *node) {
 	float tempVec3[2][3];
@@ -116,7 +117,7 @@ static int heroBehaviour(Node *node) {
 			mulVec3ByScalar(tempVec3[1], velocityLengthH * node->shape.mass + controller.move[1] * 30000.0F, tempVec3[0]);
 			subVec3(tempVec3[0], mulVec3ByScalar(node->velocity, node->shape.mass, tempVec3[2]), tempVec3[1]);
 			applyForce(node, tempVec3[1], XZ_MASK, FALSE);
-			if(velocityLengthH > 1.0F) node->torque[1] += controller.move[0] * velocityLengthH * 1000.0F;
+			if(velocityLengthH > 1.0F) node->torque[1] += controller.move[0] * max(velocityLengthH * 1000.0F, 500000.0F);
 		}
 	}
 	if(node->collisionFlags & DIRT_COLLISIONMASK) {
@@ -139,6 +140,16 @@ static int heroBehaviour(Node *node) {
 static int opponentBehaviour(Node *node) {
 	updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore);
 	autoDrive(node);
+	return TRUE;
+}
+
+static int timeBehaviour(Node *node) {
+	char buffer[14];
+	float elapsed = elapsedTime(startTime);
+	int minutes = elapsed / 60;
+	float seconds = elapsed - 60.0F * minutes;
+	sprintf(buffer, "TIME %d`%06.3f", minutes, seconds);
+	drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
 	return TRUE;
 }
 
@@ -279,7 +290,8 @@ static void initialize(void) {
 		lapJudgmentNodes[i].isThrough = TRUE;
 	}
 
-	speedNode = initNodeText("speed", -60.0F, 0.0F, 60, 12, speedBehaviour);
+	timeNode = initNodeText("time", -78.0F, 0.0F, 78, 12, timeBehaviour);
+	speedNode = initNodeText("speed", -60.0F, 12.0F, 60, 12, speedBehaviour);
 	lapNode = initNodeText("lap", 0.0F, 0.0F, 42, 12, lapBehaviour);
 	rankNode = initNodeText("rank", 0.0F, 12.0F, 36, 12, rankBehaviour);
 	centerNode = initNodeText("center", 32.0F, 56.0F, 56, 16, centerBehaviour);
@@ -303,11 +315,13 @@ static void startGame(void) {
 	opponentNode.position[2] = 0.0F;
 
 	clearVector(&scene.nodes);
-	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, NULL);
+	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, NULL);
 	pushUntilNull(&scene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
 	pushUntilNull(&scene.nodes, &heroNode, &opponentNode, NULL);
 	pushUntilNull(&scene.nodes, &courseNode, &courseDirtNode, NULL);
 	push(&scene.nodes, &stageNode);
+
+	QueryPerformanceCounter(&startTime);
 }
 
 static void deinitialize(void) {
