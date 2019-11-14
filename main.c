@@ -52,7 +52,8 @@ static Node resultNode;
 
 static Scene mapScene;
 
-static float defaultCameraPosition[3] = { 0.0F, 25.0F, -50.0F };
+static float nextCameraPosition[3] = { 0.0F, 25.0F, -50.0F };
+static float currentCameraPosition[3] = { 0.0F, 25.0F, -50.0F };
 static float cameraAngle;
 static int heroLapScore, opponentLapScore;
 static int heroPreviousLap = -1, opponentPreviousLap = -1;
@@ -141,6 +142,7 @@ static void updateLapScore(unsigned int flags, int *previousLap, int *lapScore) 
 
 static float force[3];
 static int heroBehaviour(Node *node) {
+	CollisionInfo *targetInfo;
 	if(node->collisionFlags & COURSE_COLLISIONMASK) {
 		if(isfinished) {
 			autoDrive(node, force);
@@ -161,6 +163,14 @@ static int heroBehaviour(Node *node) {
 		node->collisionShape.dynamicFriction = 0.1F;
 	}
 	updateLapScore(node->collisionFlags, &heroPreviousLap, &heroLapScore);
+	iterf(&node->collisionTargets, &targetInfo) {
+	  if(targetInfo->target->collisionMaskActive & LAP_COLLISIONMASK) {
+	    CollisionInfoNode2Node *info = targetInfo->info.firstItem->data;
+	    float upper[3] = { 0.0F, 25.0F, 0.0F };
+	    mulVec3ByScalar(info->normal, 50.0F, nextCameraPosition);
+	    addVec3(nextCameraPosition, upper, nextCameraPosition);
+	  }
+	}
 	memcpy_s(heroMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
 	memcpy_s(heroMarkerNode.angle, SIZE_VEC3, node->angle, SIZE_VEC3);
 	return TRUE;
@@ -276,6 +286,7 @@ static void initialize(void) {
 	scene = initScene();
 	scene.camera.parent = &heroNode;
 	scene.camera.positionMask[1] = TRUE;
+	scene.camera.isRotationDisabled = TRUE;
 	scene.background = BLUE;
 
 	courseNode = initNode("course", course);
@@ -444,10 +455,11 @@ int loop(float elapsed, Image *out) {
 	}
 	scene.camera.fov -= 0.05F * controller.arrow[1];
 	scene.camera.fov = min(PI / 3.0F * 2.0F, max(PI / 3.0F, scene.camera.fov));
+	addVec3(currentCameraPosition, mulVec3ByScalar(subVec3(nextCameraPosition, currentCameraPosition, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), currentCameraPosition);
 	cameraAngle -= 0.1F * controller.arrow[0];
 	handle += 0.3F * (controller.move[0] - handle);
-	genRotationMat4(0.0F, cameraAngle + handle / 2.0F, 0.0F, tempMat4[0]);
-	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), defaultCameraPosition, scene.camera.position);
+	genRotationMat4(0.0F, cameraAngle, 0.0F, tempMat4[0]);
+	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), currentCameraPosition, scene.camera.position);
 	return TRUE;
 }
 
