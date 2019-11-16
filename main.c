@@ -157,7 +157,6 @@ static void updateLapScore(unsigned int flags, int *previousLap, int *lapScore) 
 static float force[3];
 static float heroAngle;
 static int heroBehaviour(Node *node) {
-	// CollisionInfo *targetInfo;
 	if(node->collisionFlags & COURSE_COLLISIONMASK) {
 		if(/*TRUE*/ isfinished) {
 			autoDrive(node, force);
@@ -187,14 +186,6 @@ static int heroBehaviour(Node *node) {
 		node->collisionShape.dynamicFriction = 0.1F;
 	}
 	updateLapScore(node->collisionFlags, &heroPreviousLap, &heroLapScore);
-	// iterf(&node->collisionTargets, &targetInfo) {
-	//   if(targetInfo->target->collisionMaskActive & LAP_COLLISIONMASK) {
-	//     CollisionInfoNode2Node *info = targetInfo->info.firstItem->data;
-	//     float upper[3] = { 0.0F, 25.0F, 0.0F };
-	//     mulVec3ByScalar(info->normal, 75.0F, nextCameraPosition);
-	//     addVec3(nextCameraPosition, upper, nextCameraPosition);
-	//   }
-	// }
 	memcpy_s(heroMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
 	memcpy_s(heroMarkerNode.angle, SIZE_VEC3, node->angle, SIZE_VEC3);
 	return TRUE;
@@ -215,6 +206,10 @@ static int timeBehaviour(Node *node) {
 		float elapsed = elapsedTime(startTime);
 		int minutes = elapsed / 60;
 		float seconds = elapsed - 60.0F * minutes;
+		if(minutes > 9) {
+			minutes = 9;
+			seconds = 59.999F;
+		}
 		sprintf(buffer, "TIME %d`%06.3f", minutes, seconds);
 		drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
 	}
@@ -223,7 +218,12 @@ static int timeBehaviour(Node *node) {
 
 static int speedBehaviour(Node *node) {
 	char buffer[11];
-	sprintf(buffer, "%5.1f km/h", length3(heroNode.velocity) * 3600 / 10000);
+	float speed = length3(heroNode.velocity) * 3600 / 10000;
+	if(speed >= 1000.0F) {
+		sprintf(buffer, "???.? km/h");
+	} else {
+		sprintf(buffer, "%5.1f km/h", speed);
+	}
 	drawTextSJIS(speedNode.texture, shnm12, 0, 0, buffer);
 	return TRUE;
 }
@@ -231,7 +231,7 @@ static int speedBehaviour(Node *node) {
 static int lapBehaviour(Node *node) {
 	if(!isfinished) {
 		char buffer[8];
-		int lap = heroLapScore / 45 + 1;
+		int lap = max(heroLapScore / 45 + 1, 1);
 		if(lap > 3) {
 			lap = 3;
 			isfinished = TRUE;
