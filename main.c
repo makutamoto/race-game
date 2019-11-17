@@ -89,6 +89,8 @@ static float heroAngle;
 
 static Vector heroRecords, opponentRecords;
 
+static Sound bgm;
+
 static void addCarRecord(Vector *records, float position[3], float angle[3], float velocity[3], float angVelocity[3], float angMomentum[3]) {
 	CarRecord record;
 	memcpy_s(record.position, SIZE_VEC3, position, SIZE_VEC3);
@@ -329,6 +331,11 @@ static int rankBehaviour(Node *node) {
 	return TRUE;
 }
 
+static void raceStarted(void) {
+	QueryPerformanceCounter(&startTime);
+	bgm = PlaySoundNeo("./assets/bgm.wav", TRUE);
+}
+
 static int centerBehaviour(Node *node) {
 	float elapsed = 4.0F - elapsedTime(raceTime);
 	if(isRaceStarted) {
@@ -349,7 +356,7 @@ static int centerBehaviour(Node *node) {
 			drawTextSJIS(node->texture, shnm16b, 0, 0, buffer);
 			node->isVisible = TRUE;
 		} else {
-			QueryPerformanceCounter(&startTime);
+			raceStarted();
 			isRaceStarted = TRUE;
 		}
 	}
@@ -389,10 +396,9 @@ static int mapBehaviour(Node *node) {
 	return TRUE;
 }
 
-static void initialize(void) {
+static void initGame(void) {
 	int i;
 	char lapNames[3][50] = { "./assets/courseMk2CollisionA.obj", "./assets/courseMk2CollisionB.obj", "./assets/courseMk2CollisionC.obj" };
-	initCNSG(SCREEN_WIDTH, SCREEN_HEIGHT);
 	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
 	shnm16b = initFontSJIS(loadBitmap("assets/shnm8x16rb.bmp", NULL_COLOR), loadBitmap("assets/shnmk16b.bmp", NULL_COLOR), 8, 16, 16);
 
@@ -492,7 +498,8 @@ static void initialize(void) {
 
 	mapScene = initScene();
 	mapScene.camera = initCamera(0.0F, 1000.0F, 0.0F, SCREEN_ASPECT);
-	initVec3(mapScene.camera.worldUp, X_MASK);
+	clearVec3(mapScene.camera.worldUp);
+	mapScene.camera.worldUp[0] = -1.0F;
 	mapScene.camera.farLimit = 1000.0F;
 
 	courseMapNode = courseNode;
@@ -508,9 +515,13 @@ static void initialize(void) {
 	push(&mapScene.nodes, &opponentMarkerNode);
 
 	loadRecord(&opponentRecords, "./carRecords/record.crd");
+
+	PlaySoundNeo("./assets/engine.wav", TRUE);
 }
 
 static void startGame(void) {
+	if(bgm) StopSound(bgm);
+
 	cameraAngle = 0.0F;
 	cameraFov = PI / 3.0F * 1.5F;
 	isfinished = FALSE;
@@ -540,6 +551,8 @@ static void startGame(void) {
 	opponentNode.position[0] = 600.0F;
 	opponentNode.position[1] = 75.0F;
 	opponentNode.position[2] = 0.0F;
+	opponentNode.isVisible = TRUE;
+	opponentMarkerNode.isVisible = TRUE;
 	clearVec3(opponentNode.velocity);
 	clearVec3(opponentNode.angle);
 	clearVec3(opponentNode.angVelocity);
@@ -556,7 +569,7 @@ static void startGame(void) {
 	QueryPerformanceCounter(&raceTime);
 }
 
-static void deinitialize(void) {
+static void deinitGame(void) {
 	discardShape(heroNode.shape);
 	discardShape(courseNode.shape);
 	discardShape(courseNode.collisionShape);
@@ -567,7 +580,6 @@ static void deinitialize(void) {
 	freeImage(shnm12.font0208);
 	freeImage(hero);
 	discardScene(&scene);
-	deinitGraphics();
 }
 
 int loop(float elapsed, Image *out) {
@@ -616,10 +628,12 @@ int loop(float elapsed, Image *out) {
 	return TRUE;
 }
 
-int main(void) {
-	initialize();
+int main(int argc, char *argv[]) {
+	initCNSG(argc, argv, SCREEN_WIDTH, SCREEN_HEIGHT);
+	initGame();
 	startGame();
 	gameLoop(FRAME_PER_SECOND, loop);
-	deinitialize();
+	deinitGame();
+	deinitCNSG();
 	return 0;
 }
