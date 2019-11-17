@@ -18,6 +18,25 @@
 #define LAPC_COLLISIONMASK 0x10
 #define DIRT_COLLISIONMASK 0x20
 
+typedef struct {
+	float position[3];
+	float angle[3];
+	float velocity[3];
+	float angVelocity[3];
+	float angMomentum[3];
+} CarRecord;
+
+#pragma pack(1)
+typedef struct {
+	float position[3];
+	float angle[3];
+	float velocity[3];
+	float angVelocity[3];
+	float angMomentum[3];
+	char reserved[36];
+} CarRecordForSave;
+#pragma pack()
+
 static struct {
 	float move[2];
 	float arrow[4];
@@ -41,10 +60,10 @@ static Image course;
 static Image stageImage;
 
 static Scene scene;
-static Node speedNode, lapNode, rankNode, centerNode, timeNode;
+static Node speedNode, lapNode, rankNode, centerNode, timeNode, replayNode;
 static Node mapNode;
 static Node lapJudgmentNodes[3];
-static Node heroNode, heroRayNode, heroLeftRayNode, heroRightRayNode;
+static Node heroNode, heroRayNode;
 static Node opponentNode, opponentRayNode;
 static Node heroMarkerNode, opponentMarkerNode;
 static Node courseNode, courseMapNode, courseDirtNode;
@@ -55,17 +74,86 @@ static Node resultNode;
 
 static Scene mapScene;
 
-static float nextCameraPosition[3] = { 0.0F, 25.0F, -75.0F };
-static float currentCameraPosition[3] = { 0.0F, 25.0F, -75.0F };
+static float nextCameraPosition[3];
+static float currentCameraPosition[3];
 static float cameraAngle, cameraFov;
 static int heroLapScore, opponentLapScore;
 static int heroPreviousLap = -1, opponentPreviousLap = -1;
 static int collisionFlag;
 static int rank;
-static int isfinished;
+static int isRaceStarted, isfinished, isReplaying;
 static float transition;
-static LARGE_INTEGER startTime;
+static LARGE_INTEGER raceTime, startTime, finishedTime;
 static float handle, accel;
+static float heroAngle;
+
+static Vector heroRecords, opponentRecords;
+
+static void addCarRecord(Vector *records, float position[3], float angle[3], float velocity[3], float angVelocity[3], float angMomentum[3]) {
+	CarRecord record;
+	memcpy_s(record.position, SIZE_VEC3, position, SIZE_VEC3);
+	memcpy_s(record.angle, SIZE_VEC3, angle, SIZE_VEC3);
+	memcpy_s(record.velocity, SIZE_VEC3, velocity, SIZE_VEC3);
+	memcpy_s(record.angVelocity, SIZE_VEC3, angVelocity, SIZE_VEC3);
+	memcpy_s(record.angMomentum, SIZE_VEC3, angMomentum, SIZE_VEC3);
+	pushAlloc(records, sizeof(CarRecord), &record);
+}
+
+static void recordCar(Vector *records, Node *node) {
+	if(records->length < 36000) addCarRecord(records, node->position, node->angle, node->velocity, node->angVelocity, node->angMomentum);
+}
+
+static int playCar(Vector *records, Node *node) {
+	CarRecord *record;
+	record = nextData(records);
+	if(record == NULL) return -1;
+	memcpy_s(node->position, SIZE_VEC3, record->position, SIZE_VEC3);
+	memcpy_s(node->angle, SIZE_VEC3, record->angle, SIZE_VEC3);
+	memcpy_s(node->velocity, SIZE_VEC3, record->velocity, SIZE_VEC3);
+	memcpy_s(node->angVelocity, SIZE_VEC3, record->angVelocity, SIZE_VEC3);
+	memcpy_s(node->angMomentum, SIZE_VEC3, record->angMomentum, SIZE_VEC3);
+	return 0;
+}
+
+static void saveRecord(Vector *records, const char path[]) {
+	FILE *file;
+	CarRecord *record;
+	if(fopen_s(&file, path, "wb")) {
+		printf("saveRecord: Failed to open a file: %s\n", path);
+	} else {
+		iterf(records, &record) {
+			CarRecordForSave data;
+			memcpy_s(data.position, SIZE_VEC3, record->position, SIZE_VEC3);
+			memcpy_s(data.angle, SIZE_VEC3, record->angle, SIZE_VEC3);
+			memcpy_s(data.velocity, SIZE_VEC3, record->velocity, SIZE_VEC3);
+			memcpy_s(data.angVelocity, SIZE_VEC3, record->angVelocity, SIZE_VEC3);
+			memcpy_s(data.angMomentum, SIZE_VEC3, record->angMomentum, SIZE_VEC3);
+			fwrite(&data, sizeof(CarRecordForSave), 1, file);
+		}
+		fclose(file);
+	}
+}
+
+static void loadRecord(Vector *records, const char path[]) {
+	FILE *file;
+	*records = initVector();
+	if(fopen_s(&file, path, "rb")) {
+		printf("loadRecord: Failed to open a file: %s\n", path);
+	} else {
+		CarRecordForSave data;
+		size_t count;
+		for(count = fread_s(&data, sizeof(CarRecordForSave), sizeof(CarRecordForSave), 1, file);count == 1;count = fread_s(&data, sizeof(CarRecordForSave), sizeof(CarRecordForSave), 1, file)) {
+			addCarRecord(records, data.position, data.angle, data.velocity, data.angVelocity, data.angMomentum);
+		}
+		fclose(file);
+	}
+}
+
+static void replay() {
+	opponentNode.isVisible = TRUE;
+	opponentMarkerNode.isVisible = TRUE;
+	resetIteration(&opponentRecords);
+}
 
 static void printCenter(const char text[10]) {
 	drawTextSJIS(centerNode.texture, shnm16b, 0, 0, (char*)text);
@@ -91,40 +179,6 @@ static float controlCar(Node *node, float accel, float handle, float front[3]) {
 	mulMat3Vec3(tempMat3[0], tempVec3[0], tempVec3[1]);
 	initVec3(tempVec3[0], Y_MASK);
 	return cosVec3(tempVec3[0], tempVec3[1]);
-}
-
-static int autoDrive(Node *node, float normal[3]) {
-	float tempVec3[3][3];
-	float tempMat3[1][3][3];
-	float tempMat4[1][4][4];
-	float front[3];
-	float autoHandle;
-	Node *ray, *leftRay, *rightRay;
-	ray = dataAt(&node->children, 0);
-	leftRay = dataAt(&node->children, 1);
-	rightRay = dataAt(&node->children, 2);
-	if(ray->collisionTargets.length != 0) {
-		CollisionInfo *rayInfo = ray->collisionTargets.firstItem->data;
-		CollisionInfoNode2Node *info = rayInfo->info.firstItem->data;
-		memcpy_s(normal, SIZE_VEC3, info->normal, SIZE_VEC3);
-	}
-	convMat4toMat3(genRotationMat4(node->angle[0], node->angle[1], node->angle[2], tempMat4[0]), tempMat3[0]);
-	initVec3(tempVec3[0], Z_MASK);
-	mulMat3Vec3(tempMat3[0], tempVec3[0], front);
-	tempVec3[1][0] = front[0];
-	tempVec3[1][1] = front[2];
-	tempVec3[1][2] = 0.0F;
-	clearVec3(tempVec3[0]);
-	tempVec3[0][0] = normal[0];
-	tempVec3[0][1] = normal[2];
-	cross(tempVec3[0], tempVec3[1], tempVec3[2]);
-	// node->torque[1] += 300000.0F *  * (1.0F - cosVec3(normal, tempVec3[1])) / 2.0F;
-	// subVec3(mulVec3ByScalar(front, 30000.0F, tempVec3[0]), mulVec3ByScalar(node->velocity, node->collisionShape.mass, tempVec3[1]), tempVec3[0]);
-	autoHandle = -sign(tempVec3[2][2]);
-	if(leftRay->collisionFlags & DIRT_COLLISIONMASK) autoHandle += 2.0F;
-	if(rightRay->collisionFlags & DIRT_COLLISIONMASK) autoHandle -= 2.0F;
-	controlCar(node, (ray->collisionFlags & COURSE_COLLISIONMASK) ? -0.5F : 1.0F, autoHandle, front);
-	return TRUE;
 }
 
 static void updateLapScore(unsigned int flags, int *previousLap, int *lapScore) {
@@ -154,30 +208,35 @@ static void updateLapScore(unsigned int flags, int *previousLap, int *lapScore) 
 	}
 }
 
-static float force[3];
-static float heroAngle;
 static int heroBehaviour(Node *node) {
-	if(node->collisionFlags & COURSE_COLLISIONMASK) {
-		if(/*TRUE*/ isfinished) {
-			autoDrive(node, force);
-		} else {
-			float front[3];
-			float upper[3] = { 0.0F, 25.0F, 0.0F };
-			if(heroAngle < 0.75F) {
-				heroAngle = controlCar(node, 0.0F, 0.0F, front);
+	float front[3];
+	if(isRaceStarted) {
+		if(isfinished) {
+			if(isReplaying) {
+				if(playCar(&heroRecords, node)) replay();
 			} else {
-				heroAngle = controlCar(node, accel, controller.move[0], front);
+				controlCar(node, 0.0F, 0.0F, front);
 			}
-			if(heroAngle < 0.0F) {
-				node->angle[0] = 0.0F;
-				node->angle[2] = 0.0F;
-				node->angVelocity[0] = 0.0F;
-				node->angVelocity[2] = 0.0F;
-				node->angMomentum[0] = 0.0F;
-				node->angMomentum[2] = 0.0F;
+		} else {
+			recordCar(&heroRecords, node);
+			if(node->collisionFlags & COURSE_COLLISIONMASK) {
+				float upper[3] = { 0.0F, 25.0F, 0.0F };
+				if(heroAngle < 0.75F) {
+					heroAngle = controlCar(node, 0.0F, 0.0F, front);
+				} else {
+					heroAngle = controlCar(node, accel, controller.move[0], front);
+				}
+				if(heroAngle < 0.0F) {
+					node->angle[0] = 0.0F;
+					node->angle[2] = 0.0F;
+					node->angVelocity[0] = 0.0F;
+					node->angVelocity[2] = 0.0F;
+					node->angMomentum[0] = 0.0F;
+					node->angMomentum[2] = 0.0F;
+				}
+				mulVec3ByScalar(front, -75.0F, nextCameraPosition);
+				addVec3(nextCameraPosition, upper, nextCameraPosition);
 			}
-	    mulVec3ByScalar(front, -75.0F, nextCameraPosition);
-	    addVec3(nextCameraPosition, upper, nextCameraPosition);
 		}
 	}
 	if(node->collisionFlags & DIRT_COLLISIONMASK) {
@@ -191,10 +250,14 @@ static int heroBehaviour(Node *node) {
 	return TRUE;
 }
 
-static float onormal[3];
 static int opponentBehaviour(Node *node) {
+	if(isRaceStarted) {
+		if(playCar(&opponentRecords, node)) {
+			node->isVisible = FALSE;
+			opponentMarkerNode.isVisible = FALSE;
+		}
+	}
 	updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore);
-	autoDrive(node, onormal);
 	memcpy_s(opponentMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
 	memcpy_s(opponentMarkerNode.angle, SIZE_VEC3, node->angle, SIZE_VEC3);
 	return TRUE;
@@ -202,16 +265,20 @@ static int opponentBehaviour(Node *node) {
 
 static int timeBehaviour(Node *node) {
 	if(!isfinished) {
-		char buffer[14];
-		float elapsed = elapsedTime(startTime);
-		int minutes = elapsed / 60;
-		float seconds = elapsed - 60.0F * minutes;
-		if(minutes > 9) {
-			minutes = 9;
-			seconds = 59.999F;
+		if(isRaceStarted) {
+			char buffer[14];
+			float elapsed = elapsedTime(startTime);
+			int minutes = elapsed / 60;
+			float seconds = elapsed - 60.0F * minutes;
+			if(minutes > 9) {
+				minutes = 9;
+				seconds = 59.999F;
+			}
+			sprintf(buffer, "TIME %d`%06.3f", minutes, seconds);
+			drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
+		} else {
+			drawTextSJIS(node->texture, shnm12, 0, 0, "TIME 0`00.000");
 		}
-		sprintf(buffer, "TIME %d`%06.3f", minutes, seconds);
-		drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
 	}
 	return TRUE;
 }
@@ -229,31 +296,68 @@ static int speedBehaviour(Node *node) {
 }
 
 static int lapBehaviour(Node *node) {
-	if(!isfinished) {
+	if(isfinished) {
+		if(!isReplaying) {
+			float elapsed = elapsedTime(finishedTime);
+			if(elapsed > 3.0F) {
+				replay();
+				isReplaying = TRUE;
+			}
+		}
+	} else {
 		char buffer[8];
 		int lap = max(heroLapScore / 45 + 1, 1);
 		if(lap > 3) {
-			lap = 3;
 			isfinished = TRUE;
+			QueryPerformanceCounter(&finishedTime);
+		} else {
+			sprintf(buffer, "LAP %d/3", lap);
+			drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
 		}
-		sprintf(buffer, "LAP %d/3", lap);
-		drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
 	}
 	return TRUE;
 }
 
 static int rankBehaviour(Node *node) {
-	static char rankList[][4] = { "1st", "2nd" };
-	if(heroLapScore != opponentLapScore) {
-		rank = heroLapScore > opponentLapScore ? 0 : 1;
+	if(!isfinished) {
+		static char rankList[][4] = { "1st", "2nd" };
+		if(heroLapScore != opponentLapScore) {
+			rank = heroLapScore > opponentLapScore ? 0 : 1;
+		}
+		drawTextSJIS(node->texture, shnm12, 0, 0, rankList[rank]);
 	}
-	drawTextSJIS(node->texture, shnm12, 0, 0, rankList[rank]);
 	return TRUE;
 }
 
 static int centerBehaviour(Node *node) {
-	if(isfinished) {
-		drawTextSJIS(node->texture, shnm16b, 0, 0, "FINISH!");
+	float elapsed = 4.0F - elapsedTime(raceTime);
+	if(isRaceStarted) {
+		if(elapsed > 0.0F) {
+			drawTextSJIS(node->texture, shnm16b, 0, 0, "START! ");
+		} else {
+			if(isfinished && !isReplaying) {
+				drawTextSJIS(node->texture, shnm16b, 0, 0, "FINISH!");
+				node->isVisible = TRUE;
+			} else {
+				node->isVisible = FALSE;
+			}
+		}
+	} else {
+		char buffer[8];
+		if(elapsed > 1.0F) {
+			sprintf(buffer, "%4d   ", (int)elapsed);
+			drawTextSJIS(node->texture, shnm16b, 0, 0, buffer);
+			node->isVisible = TRUE;
+		} else {
+			QueryPerformanceCounter(&startTime);
+			isRaceStarted = TRUE;
+		}
+	}
+	return TRUE;
+}
+
+static int replayBehaviour(Node *node) {
+	if(isReplaying) {
 		node->isVisible = TRUE;
 	} else {
 		node->isVisible = FALSE;
@@ -273,30 +377,6 @@ static Node initCarRayNode(const char id[]) {
 	carRayNode.position[2] = 75.0F;
 	carRayNode.collisionShape = carRayNode.shape;
 	carRayNode.collisionMaskPassive = COURSE_COLLISIONMASK | LAP_COLLISIONMASK;
-	carRayNode.isThrough = TRUE;
-	carRayNode.isVisible = FALSE;
-	return carRayNode;
-}
-
-static Node initCarLeftRayNode(const char id[]) {
-	Node carRayNode;
-	carRayNode = initNode(id, NO_IMAGE);
-	carRayNode.shape = initShapePlane(100.0F, 50.0F, BLACK, 1.0F);
-	carRayNode.position[0] = -50.0F;
-	carRayNode.collisionShape = carRayNode.shape;
-	carRayNode.collisionMaskPassive = DIRT_COLLISIONMASK;
-	carRayNode.isThrough = TRUE;
-	carRayNode.isVisible = FALSE;
-	return carRayNode;
-}
-
-static Node initCarRightRayNode(const char id[]) {
-	Node carRayNode;
-	carRayNode = initNode(id, NO_IMAGE);
-	carRayNode.shape = initShapePlane(100.0F, 50.0F, BLACK, 1.0F);
-	carRayNode.position[0] = 50.0F;
-	carRayNode.collisionShape = carRayNode.shape;
-	carRayNode.collisionMaskPassive = DIRT_COLLISIONMASK;
 	carRayNode.isThrough = TRUE;
 	carRayNode.isVisible = FALSE;
 	return carRayNode;
@@ -372,19 +452,14 @@ static void initialize(void) {
 	heroNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAP_COLLISIONMASK | DIRT_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
 	heroRayNode = initCarRayNode("heroRay");
-	heroLeftRayNode = initCarLeftRayNode("heroRay");
-	heroRightRayNode = initCarRightRayNode("heroRay");
 	addNodeChild(&heroNode, &heroRayNode);
-	addNodeChild(&heroNode, &heroLeftRayNode);
-	addNodeChild(&heroNode, &heroRightRayNode);
 
 	opponentNode = initNode("opponent", opponentImage);
 	initShapeFromObj(&opponentNode.shape, "./assets/subaru.obj", 1.0F);
 	initShapeFromObj(&opponentNode.collisionShape, "./assets/subaruCollision.obj", 500.0F);
-	opponentNode.isPhysicsEnabled = TRUE;
 	setVec3(opponentNode.scale, 4.0F, XYZ_MASK);
-	opponentNode.collisionMaskActive = CAR_COLLISIONMASK;
-	opponentNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAPA_COLLISIONMASK | LAPB_COLLISIONMASK | LAPC_COLLISIONMASK;
+	opponentNode.isPhysicsEnabled = TRUE;
+	opponentNode.collisionMaskPassive = COURSE_COLLISIONMASK | LAP_COLLISIONMASK;
 	opponentNode.behaviour = opponentBehaviour;
 	opponentRayNode = initCarRayNode("opponentRay");
 	addNodeChild(&opponentNode, &opponentRayNode);
@@ -403,8 +478,10 @@ static void initialize(void) {
 	speedNode = initNodeText("speed", -60.0F, 12.0F, 60, 12, speedBehaviour);
 	lapNode = initNodeText("lap", 0.0F, 0.0F, 42, 12, lapBehaviour);
 	rankNode = initNodeText("rank", 0.0F, 12.0F, 36, 12, rankBehaviour);
-	centerNode = initNodeText("center", 32.0F, 56.0F, 56, 16, centerBehaviour);
+	centerNode = initNodeText("center", 62.0F, 56.0F, 56, 16, centerBehaviour);
 	centerNode.isVisible = FALSE;
+	replayNode = initNodeText("replay", -48.0F, -16.0F, 48, 16, replayBehaviour);
+	drawTextSJIS(replayNode.texture, shnm16b, 0, 0, "REPLAY");
 
 	mapNode = initNodeText("map", 0.0F, 24.0F, 128.0F, 128.0F, mapBehaviour);
 	divVec3ByScalar(mapNode.scale, 4.0F, mapNode.scale);
@@ -429,16 +506,28 @@ static void initialize(void) {
 	opponentMarkerNode = initNode("opponentMarker", NO_IMAGE);
 	opponentMarkerNode.shape = initShapeBox(250.0F, 250.0F, 250.0F, DARK_RED, 1.0F);
 	push(&mapScene.nodes, &opponentMarkerNode);
+
+	loadRecord(&opponentRecords, "./carRecords/record.crd");
 }
 
 static void startGame(void) {
 	cameraAngle = 0.0F;
 	cameraFov = PI / 3.0F * 1.5F;
 	isfinished = FALSE;
+	isRaceStarted = FALSE;
+	isReplaying = FALSE;
 	heroLapScore = 0;
 	heroPreviousLap = -1;
 	opponentLapScore = 0;
 	opponentPreviousLap = -1;
+
+	freeVector(&heroRecords);
+	resetIteration(&opponentRecords);
+
+	currentCameraPosition[0] = 0.0F;
+	currentCameraPosition[1] = 25.0F;
+	currentCameraPosition[2] = -75.0F;
+	memcpy_s(nextCameraPosition, SIZE_VEC3, currentCameraPosition, SIZE_VEC3);
 
 	heroNode.position[0] = 650.0F;
 	heroNode.position[1] = 75.0F;
@@ -449,7 +538,7 @@ static void startGame(void) {
 	clearVec3(heroNode.angMomentum);
 
 	opponentNode.position[0] = 600.0F;
-	opponentNode.position[1] = 50.0F;
+	opponentNode.position[1] = 75.0F;
 	opponentNode.position[2] = 0.0F;
 	clearVec3(opponentNode.velocity);
 	clearVec3(opponentNode.angle);
@@ -457,14 +546,14 @@ static void startGame(void) {
 	clearVec3(opponentNode.angMomentum);
 
 	clearVector(&scene.nodes);
-	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, NULL);
+	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, &replayNode, NULL);
 	pushUntilNull(&scene.nodes, &mapNode, NULL);
 	pushUntilNull(&scene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
-	pushUntilNull(&scene.nodes, &heroNode/*, &opponentNode*/, NULL);
+	pushUntilNull(&scene.nodes, &heroNode, &opponentNode, NULL);
 	pushUntilNull(&scene.nodes, &courseNode, &courseDirtNode, NULL);
 	push(&scene.nodes, &stageNode);
 
-	QueryPerformanceCounter(&startTime);
+	QueryPerformanceCounter(&raceTime);
 }
 
 static void deinitialize(void) {
@@ -498,15 +587,16 @@ int loop(float elapsed, Image *out) {
 	updateScene(&scene, elapsed / 2.0F);
 	updateScene(&scene, elapsed / 2.0F);
 	updateScene(&resultScene, elapsed);
-	if(controller.quit) return FALSE;
+	if(controller.quit) {
+		// saveRecord(&heroRecords, "./carRecords/record.crd");
+		return FALSE;
+	}
 	if(controller.retry) startGame();
 	if(controller.collision) {
 		if(!collisionFlag) {
 			int i;
-			// for(i = 0;i < 3;i++) lapJudgmentNodes[i].isVisible = !lapJudgmentNodes[i].isVisible;
+			for(i = 0;i < 3;i++) lapJudgmentNodes[i].isVisible = !lapJudgmentNodes[i].isVisible;
 			heroRayNode.isVisible = !heroRayNode.isVisible;
-			heroLeftRayNode.isVisible = !heroLeftRayNode.isVisible;
-			heroRightRayNode.isVisible = !heroRightRayNode.isVisible;
 			opponentRayNode.isVisible = !opponentRayNode.isVisible;
 			courseDirtNode.isVisible = !courseDirtNode.isVisible;
 			collisionFlag = TRUE;
@@ -514,7 +604,7 @@ int loop(float elapsed, Image *out) {
 	} else {
 		collisionFlag = FALSE;
 	}
-	accel += 0.3F * (controller.move[1] - accel);
+	if(!isReplaying) accel += 0.3F * (controller.move[1] - accel);
 	cameraFov = min(PI / 3.0F * 1.5F, max(PI / 3.0F, cameraFov - 0.05F * controller.arrow[1]));
 	scene.camera.fov = cameraFov + accel / 5.0F;
 	addVec3(currentCameraPosition, mulVec3ByScalar(subVec3(nextCameraPosition, currentCameraPosition, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), currentCameraPosition);
