@@ -293,9 +293,11 @@ static int timeBehaviour(Node *node) {
 	} else {
 		if(isRaceStarted) {
 			char buffer[14];
+			int minutes;
+			float seconds;
 			currentTime = scene.clock - 3.0F;
-			int minutes = currentTime / 60;
-			float seconds = currentTime - 60.0F * minutes;
+			minutes = currentTime / 60;
+			seconds = currentTime - 60.0F * minutes;
 			if(minutes > 9) {
 				minutes = 9;
 				seconds = 59.999F;
@@ -705,7 +707,7 @@ int loop(float elapsed, Image *out, int sleep) {
 		isMenuOpened = FALSE;
 	}
 	if(enterKey.state && menuSelect == QUIT) {
-		saveRecord(&heroRecords, "./carRecords/title.crd");
+		// saveRecord(&heroRecords, "./carRecords/title.crd");
 		return FALSE;
 	}
 	quitPrevious = controller.quit;
@@ -717,7 +719,7 @@ int loop(float elapsed, Image *out, int sleep) {
 // title
 // effect, animation
 
-BOOL WINAPI ctrlCHandler(_In_ DWORD dwCtrlType) {
+int WINAPI ctrlCHandler(DWORD dwCtrlType) {
 	deinitGame();
 	deinitCNSG();
 	ExitProcess(0);
