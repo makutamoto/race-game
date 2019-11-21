@@ -19,6 +19,7 @@
 #define DIRT_COLLISIONMASK 0x20
 
 typedef struct {
+	float time;
 	float position[3];
 	float angle[3];
 	float velocity[3];
@@ -28,6 +29,7 @@ typedef struct {
 
 #pragma pack(1)
 typedef struct {
+	float time;
 	float position[3];
 	float angle[3];
 	float velocity[3];
@@ -37,12 +39,15 @@ typedef struct {
 } CarRecordForSave;
 #pragma pack()
 
+typedef enum {
+	GO_TO_TITLE, RETRY, QUIT
+} MenuItem;
+
 static struct {
 	float move[2];
 	float arrow[4];
 	float direction[2];
 	float action;
-	float retry;
 	float collision;
 	float quit;
 	float backCamera;
@@ -52,8 +57,10 @@ static struct {
 static FontSJIS shnm12;
 static FontSJIS shnm16b;
 
-static Controller keyboard;
-static ControllerEvent wasd[4], action, restart, collision, quit, arrow[4], backCamera, resetCamera;
+static Controller keyboard, menuController;
+static ControllerData wasd[4], action, collision, quit, arrow[4], backCamera, resetCamera;
+static ControllerData quitMenu, downArrow, upArrow, enterKey;
+static int menuSelect;
 
 static Image hero, opponentImage;
 static Image course;
@@ -69,8 +76,8 @@ static Node heroMarkerNode, opponentMarkerNode;
 static Node courseNode, courseMapNode, courseDirtNode;
 static Node stageNode;
 
-static Scene resultScene;
-static Node resultNode;
+static Scene menuScene;
+static Node menuNode;
 
 static Scene mapScene;
 
@@ -82,8 +89,11 @@ static int heroPreviousLap = -1, opponentPreviousLap = -1;
 static int collisionFlag;
 static int rank;
 static int isRaceStarted, isfinished, isReplaying;
-static float transition;
-static LARGE_INTEGER raceTime, startTime, finishedTime;
+static int isMenuOpened;
+static float menuTransition;
+static int quitPrevious;
+static float finishedTime;
+static float currentTime;
 static float handle, accel;
 static float heroAngle;
 
@@ -91,8 +101,9 @@ static Vector heroRecords, opponentRecords;
 
 static Sound bgm;
 
-static void addCarRecord(Vector *records, float position[3], float angle[3], float velocity[3], float angVelocity[3], float angMomentum[3]) {
+static void addCarRecord(Vector *records, float time, float position[3], float angle[3], float velocity[3], float angVelocity[3], float angMomentum[3]) {
 	CarRecord record;
+	record.time = time;
 	memcpy_s(record.position, SIZE_VEC3, position, SIZE_VEC3);
 	memcpy_s(record.angle, SIZE_VEC3, angle, SIZE_VEC3);
 	memcpy_s(record.velocity, SIZE_VEC3, velocity, SIZE_VEC3);
@@ -101,19 +112,24 @@ static void addCarRecord(Vector *records, float position[3], float angle[3], flo
 	pushAlloc(records, sizeof(CarRecord), &record);
 }
 
-static void recordCar(Vector *records, Node *node) {
-	if(records->length < 36000) addCarRecord(records, node->position, node->angle, node->velocity, node->angVelocity, node->angMomentum);
+static void recordCar(Vector *records, Node *node, float time) {
+	if(records->length < 36000) addCarRecord(records, time, node->position, node->angle, node->velocity, node->angVelocity, node->angMomentum);
 }
 
-static int playCar(Vector *records, Node *node) {
+static int playCar(Vector *records, Node *node, float time) {
 	CarRecord *record;
 	record = nextData(records);
 	if(record == NULL) return -1;
-	memcpy_s(node->position, SIZE_VEC3, record->position, SIZE_VEC3);
-	memcpy_s(node->angle, SIZE_VEC3, record->angle, SIZE_VEC3);
-	memcpy_s(node->velocity, SIZE_VEC3, record->velocity, SIZE_VEC3);
-	memcpy_s(node->angVelocity, SIZE_VEC3, record->angVelocity, SIZE_VEC3);
-	memcpy_s(node->angMomentum, SIZE_VEC3, record->angMomentum, SIZE_VEC3);
+	if(record->time > time) {
+		previousData(records);
+	} else {
+		memcpy_s(node->position, SIZE_VEC3, record->position, SIZE_VEC3);
+		memcpy_s(node->angle, SIZE_VEC3, record->angle, SIZE_VEC3);
+		memcpy_s(node->velocity, SIZE_VEC3, record->velocity, SIZE_VEC3);
+		memcpy_s(node->angVelocity, SIZE_VEC3, record->angVelocity, SIZE_VEC3);
+		memcpy_s(node->angMomentum, SIZE_VEC3, record->angMomentum, SIZE_VEC3);
+		while(record->time > time) record = nextData(records);
+	}
 	return 0;
 }
 
@@ -125,6 +141,7 @@ static void saveRecord(Vector *records, const char path[]) {
 	} else {
 		iterf(records, &record) {
 			CarRecordForSave data;
+			data.time = record->time;
 			memcpy_s(data.position, SIZE_VEC3, record->position, SIZE_VEC3);
 			memcpy_s(data.angle, SIZE_VEC3, record->angle, SIZE_VEC3);
 			memcpy_s(data.velocity, SIZE_VEC3, record->velocity, SIZE_VEC3);
@@ -145,7 +162,7 @@ static void loadRecord(Vector *records, const char path[]) {
 		CarRecordForSave data;
 		size_t count;
 		for(count = fread_s(&data, sizeof(CarRecordForSave), sizeof(CarRecordForSave), 1, file);count == 1;count = fread_s(&data, sizeof(CarRecordForSave), sizeof(CarRecordForSave), 1, file)) {
-			addCarRecord(records, data.position, data.angle, data.velocity, data.angVelocity, data.angMomentum);
+			addCarRecord(records, data.time, data.position, data.angle, data.velocity, data.angVelocity, data.angMomentum);
 		}
 		fclose(file);
 	}
@@ -154,6 +171,7 @@ static void loadRecord(Vector *records, const char path[]) {
 static void replay() {
 	opponentNode.isVisible = TRUE;
 	opponentMarkerNode.isVisible = TRUE;
+	scene.clock = 0.0F;
 	resetIteration(&opponentRecords);
 }
 
@@ -181,6 +199,10 @@ static float controlCar(Node *node, float accel, float handle, float front[3]) {
 	mulMat3Vec3(tempMat3[0], tempVec3[0], tempVec3[1]);
 	initVec3(tempVec3[0], Y_MASK);
 	return cosVec3(tempVec3[0], tempVec3[1]);
+}
+
+static float convVelocityToSpeed(float velocity[3]) {
+	return length3(velocity) * 3600 / 10000;
 }
 
 static void updateLapScore(unsigned int flags, int *previousLap, int *lapScore) {
@@ -215,12 +237,12 @@ static int heroBehaviour(Node *node) {
 	if(isRaceStarted) {
 		if(isfinished) {
 			if(isReplaying) {
-				if(playCar(&heroRecords, node)) replay();
+				if(playCar(&heroRecords, node, currentTime)) replay();
 			} else {
 				controlCar(node, 0.0F, 0.0F, front);
 			}
 		} else {
-			recordCar(&heroRecords, node);
+			recordCar(&heroRecords, node, currentTime);
 			if(node->collisionFlags & COURSE_COLLISIONMASK) {
 				float upper[3] = { 0.0F, 25.0F, 0.0F };
 				if(heroAngle < 0.75F) {
@@ -254,7 +276,7 @@ static int heroBehaviour(Node *node) {
 
 static int opponentBehaviour(Node *node) {
 	if(isRaceStarted) {
-		if(playCar(&opponentRecords, node)) {
+		if(playCar(&opponentRecords, node, currentTime)) {
 			node->isVisible = FALSE;
 			opponentMarkerNode.isVisible = FALSE;
 		}
@@ -266,12 +288,14 @@ static int opponentBehaviour(Node *node) {
 }
 
 static int timeBehaviour(Node *node) {
-	if(!isfinished) {
+	if(isfinished) {
+		currentTime = scene.clock;
+	} else {
 		if(isRaceStarted) {
 			char buffer[14];
-			float elapsed = elapsedTime(startTime);
-			int minutes = elapsed / 60;
-			float seconds = elapsed - 60.0F * minutes;
+			currentTime = scene.clock - 3.0F;
+			int minutes = currentTime / 60;
+			float seconds = currentTime - 60.0F * minutes;
 			if(minutes > 9) {
 				minutes = 9;
 				seconds = 59.999F;
@@ -287,7 +311,7 @@ static int timeBehaviour(Node *node) {
 
 static int speedBehaviour(Node *node) {
 	char buffer[11];
-	float speed = length3(heroNode.velocity) * 3600 / 10000;
+	float speed = convVelocityToSpeed(heroNode.velocity);
 	if(speed >= 1000.0F) {
 		sprintf(buffer, "???.? km/h");
 	} else {
@@ -300,8 +324,7 @@ static int speedBehaviour(Node *node) {
 static int lapBehaviour(Node *node) {
 	if(isfinished) {
 		if(!isReplaying) {
-			float elapsed = elapsedTime(finishedTime);
-			if(elapsed > 3.0F) {
+			if(scene.clock - finishedTime > 3.0F) {
 				replay();
 				isReplaying = TRUE;
 			}
@@ -311,7 +334,7 @@ static int lapBehaviour(Node *node) {
 		int lap = max(heroLapScore / 45 + 1, 1);
 		if(lap > 3) {
 			isfinished = TRUE;
-			QueryPerformanceCounter(&finishedTime);
+			finishedTime = scene.clock;
 		} else {
 			sprintf(buffer, "LAP %d/3", lap);
 			drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
@@ -332,19 +355,22 @@ static int rankBehaviour(Node *node) {
 }
 
 static void raceStarted(void) {
-	QueryPerformanceCounter(&startTime);
 	bgm = PlaySoundNeo("./assets/bgm.wav", TRUE);
 }
 
 static int centerBehaviour(Node *node) {
-	float elapsed = 4.0F - elapsedTime(raceTime);
+	float elapsed = 4.0F - scene.clock;
 	if(isRaceStarted) {
-		if(elapsed > 0.0F) {
-			drawTextSJIS(node->texture, shnm16b, 0, 0, "START! ");
-		} else {
-			if(isfinished && !isReplaying) {
+		if(isfinished) {
+			if(!isReplaying) {
 				drawTextSJIS(node->texture, shnm16b, 0, 0, "FINISH!");
 				node->isVisible = TRUE;
+			} else {
+				node->isVisible = FALSE;
+			}
+		} else {
+			if(elapsed > 0.0F) {
+				drawTextSJIS(node->texture, shnm16b, 0, 0, "START! ");
 			} else {
 				node->isVisible = FALSE;
 			}
@@ -372,8 +398,18 @@ static int replayBehaviour(Node *node) {
 	return TRUE;
 }
 
-static int resultBehaviour(Node *node) {
-	drawTextSJIS(node->texture, shnm12, 0, 0, "RANK\n1st YOU\n2nd OPP");
+static int menuBehaviour(Node *node) {
+	switch(menuSelect) {
+		case 0:
+			drawTextSJIS(node->texture, shnm12, 0, 0, ">タイトルへ\n 再走する\n ゲーム終了");
+			break;
+		case 1:
+			drawTextSJIS(node->texture, shnm12, 0, 0, " タイトルへ\n>再走する\n ゲーム終了");
+			break;
+		case 2:
+			drawTextSJIS(node->texture, shnm12, 0, 0, " タイトルへ\n 再走する\n>ゲーム終了");
+			break;
+	}
 	return TRUE;
 }
 
@@ -396,6 +432,100 @@ static int mapBehaviour(Node *node) {
 	return TRUE;
 }
 
+static void startGame(void) {
+	if(bgm) StopSound(bgm);
+
+	cameraAngle = 0.0F;
+	cameraFov = PI / 3.0F * 1.5F;
+	isfinished = FALSE;
+	isRaceStarted = FALSE;
+	isReplaying = FALSE;
+	heroLapScore = 0;
+	heroPreviousLap = -1;
+	opponentLapScore = 0;
+	opponentPreviousLap = -1;
+
+	freeVector(&heroRecords);
+	resetIteration(&opponentRecords);
+
+	currentCameraPosition[0] = 0.0F;
+	currentCameraPosition[1] = 25.0F;
+	currentCameraPosition[2] = -75.0F;
+	memcpy_s(nextCameraPosition, SIZE_VEC3, currentCameraPosition, SIZE_VEC3);
+
+	heroNode.position[0] = 650.0F;
+	heroNode.position[1] = 75.0F;
+	heroNode.position[2] = 0.0F;
+	clearVec3(heroNode.velocity);
+	clearVec3(heroNode.angle);
+	clearVec3(heroNode.angVelocity);
+	clearVec3(heroNode.angMomentum);
+
+	opponentNode.position[0] = 600.0F;
+	opponentNode.position[1] = 75.0F;
+	opponentNode.position[2] = 0.0F;
+	opponentNode.isVisible = TRUE;
+	opponentMarkerNode.isVisible = TRUE;
+	clearVec3(opponentNode.velocity);
+	clearVec3(opponentNode.angle);
+	clearVec3(opponentNode.angVelocity);
+	clearVec3(opponentNode.angMomentum);
+
+	clearVector(&scene.nodes);
+	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, &replayNode, NULL);
+	pushUntilNull(&scene.nodes, &mapNode, NULL);
+	pushUntilNull(&scene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
+	pushUntilNull(&scene.nodes, &heroNode, &opponentNode, NULL);
+	pushUntilNull(&scene.nodes, &courseNode, &courseDirtNode, NULL);
+	push(&scene.nodes, &stageNode);
+
+	scene.clock = 0.0F;
+}
+
+static void upArrowEvent(void) {
+	menuSelect = menuSelect <= 0 ? 2 : menuSelect - 1;
+}
+
+static void downArrowEvent(void) {
+	menuSelect = menuSelect >= 2 ? 0 : menuSelect + 1;
+}
+
+static void enterKeyEvent(void) {
+	switch(menuSelect) {
+		case RETRY:
+			isMenuOpened = FALSE;
+			startGame();
+			break;
+	}
+}
+
+static void sceneBehaviour(Scene *_scene, float elapsed) {
+	float tempVec3[2][3];
+	float tempMat4[1][4][4];
+	float tempMat3[1][3][3];
+	if(controller.collision) {
+		if(!collisionFlag) {
+			int i;
+			for(i = 0;i < 3;i++) lapJudgmentNodes[i].isVisible = !lapJudgmentNodes[i].isVisible;
+			heroRayNode.isVisible = !heroRayNode.isVisible;
+			opponentRayNode.isVisible = !opponentRayNode.isVisible;
+			courseDirtNode.isVisible = !courseDirtNode.isVisible;
+			collisionFlag = TRUE;
+		}
+	} else {
+		collisionFlag = FALSE;
+	}
+	if(!isReplaying) accel += 0.3F * (controller.move[1] - accel);
+	cameraFov = min(PI / 3.0F * 1.5F, max(PI / 3.0F, cameraFov - 0.05F * controller.arrow[1]));
+	scene.camera.fov = cameraFov + accel / 5.0F;
+	addVec3(currentCameraPosition, mulVec3ByScalar(subVec3(nextCameraPosition, currentCameraPosition, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), currentCameraPosition);
+	cameraAngle -= 0.1F * controller.arrow[0];
+	if(controller.resetCamera) cameraAngle -= 0.3F * cameraAngle;
+	handle += 0.3F * (controller.move[0] - handle);
+	genRotationMat4(0.0F, cameraAngle, 0.0F, tempMat4[0]);
+	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), currentCameraPosition, scene.camera.position);
+}
+
 static void initGame(void) {
 	int i;
 	char lapNames[3][50] = { "./assets/courseMk2CollisionA.obj", "./assets/courseMk2CollisionB.obj", "./assets/courseMk2CollisionC.obj" };
@@ -403,18 +533,23 @@ static void initGame(void) {
 	shnm16b = initFontSJIS(loadBitmap("assets/shnm8x16rb.bmp", NULL_COLOR), loadBitmap("assets/shnmk16b.bmp", NULL_COLOR), 8, 16, 16);
 
 	keyboard = initController();
-	initControllerEventCross(wasd, 'W', 'A', 'S', 'D', controller.move);
-	initControllerEventCross(arrow, VK_UP, VK_LEFT, VK_DOWN, VK_RIGHT, controller.arrow);
-	action = initControllerEvent(VK_SPACE, 1.0F, 0.0F, &controller.action);
-	restart = initControllerEvent('R', 1.0F, 0.0F, &controller.retry);
-	collision = initControllerEvent(VK_F1, 1.0F, 0.0F, &controller.collision);
-	backCamera = initControllerEvent(VK_SHIFT, 1.0F, 0.0F, &controller.backCamera);
-	resetCamera = initControllerEvent(VK_SPACE, 1.0F, 0.0F, &controller.resetCamera);
-
-	quit = initControllerEvent(VK_ESCAPE, 1.0F, 0.0F, &controller.quit);
+	initControllerDataCross(wasd, 'W', 'A', 'S', 'D', controller.move);
+	initControllerDataCross(arrow, VK_UP, VK_LEFT, VK_DOWN, VK_RIGHT, controller.arrow);
+	action = initControllerData(VK_SPACE, 1.0F, 0.0F, &controller.action);
+	collision = initControllerData(VK_F1, 1.0F, 0.0F, &controller.collision);
+	backCamera = initControllerData(VK_SHIFT, 1.0F, 0.0F, &controller.backCamera);
+	resetCamera = initControllerData(VK_SPACE, 1.0F, 0.0F, &controller.resetCamera);
+	quit = initControllerData(VK_ESCAPE, 1.0F, 0.0F, &controller.quit);
 	pushUntilNull(&keyboard.events, &wasd[0], &wasd[1], &wasd[2], &wasd[3], NULL);
 	pushUntilNull(&keyboard.events, &arrow[0], &arrow[1], &arrow[2], &arrow[3], NULL);
-	pushUntilNull(&keyboard.events, &action, &restart, &quit, &collision, &backCamera, &resetCamera, NULL);
+	pushUntilNull(&keyboard.events, &action, &quit, &collision, &backCamera, &resetCamera, NULL);
+
+	menuController = initController();
+	quitMenu = initControllerData(VK_ESCAPE, 1.0F, 0.0F, NULL);
+	upArrow = initControllerEvent(VK_UP, NULL, upArrowEvent);
+	downArrow = initControllerEvent(VK_DOWN, NULL, downArrowEvent);
+	enterKey = initControllerEvent(VK_RETURN, NULL, enterKeyEvent);
+	pushUntilNull(&menuController.events, &quitMenu, &upArrow, &downArrow, &enterKey, NULL);
 
 	hero = loadBitmap("assets/subaru.bmp", NULL_COLOR);
 	opponentImage = loadBitmap("assets/subaru2p.bmp", NULL_COLOR);
@@ -426,6 +561,7 @@ static void initGame(void) {
 	scene.camera.isRotationDisabled = TRUE;
 	scene.camera.farLimit = 3000.0F;
 	scene.background = BLUE;
+	scene.behaviour = sceneBehaviour;
 
 	courseNode = initNode("course", course);
 	initShapeFromObj(&courseNode.shape, "./assets/courseMk2.obj", 1.0F);
@@ -492,9 +628,9 @@ static void initGame(void) {
 	mapNode = initNodeText("map", 0.0F, 24.0F, 128.0F, 128.0F, mapBehaviour);
 	divVec3ByScalar(mapNode.scale, 4.0F, mapNode.scale);
 
-	resultScene = initScene();
-	resultNode = initNodeText("result", 0.0F, 0.0F, 84, 36, resultBehaviour);
-	push(&resultScene.nodes, &resultNode);
+	menuScene = initScene();
+	menuNode = initNodeText("quit", 6.0F, (SCREEN_HEIGHT - 36.0F) / 2.0F, 66, 36, menuBehaviour);
+	push(&menuScene.nodes, &menuNode);
 
 	mapScene = initScene();
 	mapScene.camera = initCamera(0.0F, 1000.0F, 0.0F, SCREEN_ASPECT);
@@ -515,58 +651,6 @@ static void initGame(void) {
 	push(&mapScene.nodes, &opponentMarkerNode);
 
 	loadRecord(&opponentRecords, "./carRecords/record.crd");
-
-	PlaySoundNeo("./assets/engine.wav", TRUE);
-}
-
-static void startGame(void) {
-	if(bgm) StopSound(bgm);
-
-	cameraAngle = 0.0F;
-	cameraFov = PI / 3.0F * 1.5F;
-	isfinished = FALSE;
-	isRaceStarted = FALSE;
-	isReplaying = FALSE;
-	heroLapScore = 0;
-	heroPreviousLap = -1;
-	opponentLapScore = 0;
-	opponentPreviousLap = -1;
-
-	freeVector(&heroRecords);
-	resetIteration(&opponentRecords);
-
-	currentCameraPosition[0] = 0.0F;
-	currentCameraPosition[1] = 25.0F;
-	currentCameraPosition[2] = -75.0F;
-	memcpy_s(nextCameraPosition, SIZE_VEC3, currentCameraPosition, SIZE_VEC3);
-
-	heroNode.position[0] = 650.0F;
-	heroNode.position[1] = 75.0F;
-	heroNode.position[2] = 0.0F;
-	clearVec3(heroNode.velocity);
-	clearVec3(heroNode.angle);
-	clearVec3(heroNode.angVelocity);
-	clearVec3(heroNode.angMomentum);
-
-	opponentNode.position[0] = 600.0F;
-	opponentNode.position[1] = 75.0F;
-	opponentNode.position[2] = 0.0F;
-	opponentNode.isVisible = TRUE;
-	opponentMarkerNode.isVisible = TRUE;
-	clearVec3(opponentNode.velocity);
-	clearVec3(opponentNode.angle);
-	clearVec3(opponentNode.angVelocity);
-	clearVec3(opponentNode.angMomentum);
-
-	clearVector(&scene.nodes);
-	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, &replayNode, NULL);
-	pushUntilNull(&scene.nodes, &mapNode, NULL);
-	pushUntilNull(&scene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
-	pushUntilNull(&scene.nodes, &heroNode, &opponentNode, NULL);
-	pushUntilNull(&scene.nodes, &courseNode, &courseDirtNode, NULL);
-	push(&scene.nodes, &stageNode);
-
-	QueryPerformanceCounter(&raceTime);
 }
 
 static void deinitGame(void) {
@@ -582,54 +666,67 @@ static void deinitGame(void) {
 	discardScene(&scene);
 }
 
-int loop(float elapsed, Image *out) {
-	float tempVec3[2][3];
-	float tempMat4[1][4][4];
-	float tempMat3[1][3][3];
-	updateController(keyboard);
+int loop(float elapsed, Image *out, int sleep) {
+	Image sceneImage;
+	float menuTransitionTemp;
 	if(controller.backCamera) {
 		scene.camera.position[0] *= -1.0F;
 		scene.camera.position[2] *= -1.0F;
 	}
-	*out = drawScene(&scene);//linearTransition(drawScene(&scene), drawScene(&resultScene), transition);
+	sceneImage = drawScene(&scene);
+	menuTransitionTemp = menuTransition < 0.1F ? 0.0F : 0.5F * menuTransition;
+	if(menuTransitionTemp == 0.0F) {
+		*out = sceneImage;
+	} else {
+		Image menuImage;
+		menuImage = drawScene(&menuScene);
+		*out = ThreeDimensionTransition(sceneImage, menuImage, 0.75F, 0.0F, menuTransitionTemp);
+		freeImage(menuImage);
+		freeImage(sceneImage);
+	}
 	if(controller.backCamera) {
 		scene.camera.position[0] *= -1.0F;
 		scene.camera.position[2] *= -1.0F;
 	}
-	updateScene(&scene, elapsed / 2.0F);
-	updateScene(&scene, elapsed / 2.0F);
-	updateScene(&resultScene, elapsed);
-	if(controller.quit) {
-		// saveRecord(&heroRecords, "./carRecords/record.crd");
+	if(!isMenuOpened) {
+		clearController(&menuController);
+		updateController(keyboard);
+		updateScene(&scene, elapsed / 2.0F);
+		updateScene(&scene, elapsed / 2.0F);
+		updateScene(&menuScene, elapsed);
+	} else {
+		clearController(&keyboard);
+		updateController(menuController);
+		updateScene(&menuScene, elapsed);
+	}
+	if(controller.quit || sleep) {
+		isMenuOpened = TRUE;
+	} else if(quitMenu.state) {
+		isMenuOpened = FALSE;
+	}
+	if(enterKey.state && menuSelect == QUIT) {
+		saveRecord(&heroRecords, "./carRecords/title.crd");
 		return FALSE;
 	}
-	if(controller.retry) startGame();
-	if(controller.collision) {
-		if(!collisionFlag) {
-			int i;
-			for(i = 0;i < 3;i++) lapJudgmentNodes[i].isVisible = !lapJudgmentNodes[i].isVisible;
-			heroRayNode.isVisible = !heroRayNode.isVisible;
-			opponentRayNode.isVisible = !opponentRayNode.isVisible;
-			courseDirtNode.isVisible = !courseDirtNode.isVisible;
-			collisionFlag = TRUE;
-		}
-	} else {
-		collisionFlag = FALSE;
-	}
-	if(!isReplaying) accel += 0.3F * (controller.move[1] - accel);
-	cameraFov = min(PI / 3.0F * 1.5F, max(PI / 3.0F, cameraFov - 0.05F * controller.arrow[1]));
-	scene.camera.fov = cameraFov + accel / 5.0F;
-	addVec3(currentCameraPosition, mulVec3ByScalar(subVec3(nextCameraPosition, currentCameraPosition, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), currentCameraPosition);
-	cameraAngle -= 0.1F * controller.arrow[0];
-	if(controller.resetCamera) cameraAngle -= 0.3F * cameraAngle;
-	handle += 0.3F * (controller.move[0] - handle);
-	genRotationMat4(0.0F, cameraAngle, 0.0F, tempMat4[0]);
-	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), currentCameraPosition, scene.camera.position);
+	quitPrevious = controller.quit;
+	menuTransition += 0.75F * (isMenuOpened - menuTransition);
+	return TRUE;
+}
+
+// item.
+// title
+// effect, animation
+
+BOOL WINAPI ctrlCHandler(_In_ DWORD dwCtrlType) {
+	deinitGame();
+	deinitCNSG();
+	ExitProcess(0);
 	return TRUE;
 }
 
 int main(int argc, char *argv[]) {
 	initCNSG(argc, argv, SCREEN_WIDTH, SCREEN_HEIGHT);
+	SetConsoleCtrlHandler(ctrlCHandler, TRUE);
 	initGame();
 	startGame();
 	gameLoop(FRAME_PER_SECOND, loop);
