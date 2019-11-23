@@ -5,6 +5,8 @@
 
 #include "./cnsglib/include/cnsg.h"
 
+#include "./include/record.h"
+
 #define SCREEN_HEIGHT 128
 #define SCREEN_WIDTH 180 // 1.414 * SCREEN_HEIGHT
 #define SCREEN_ASPECT ((float)SCREEN_WIDTH / SCREEN_HEIGHT)
@@ -18,26 +20,12 @@
 #define LAPC_COLLISIONMASK 0x10
 #define DIRT_COLLISIONMASK 0x20
 
-typedef struct {
-	float time;
-	float position[3];
-	float angle[3];
-	float velocity[3];
-	float angVelocity[3];
-	float angMomentum[3];
-} CarRecord;
+#define CENTER_X(size) ((SCREEN_WIDTH - (size)) / 2.0F)
+#define CENTER_Y(size) ((SCREEN_HEIGHT - (size)) / 2.0F)
 
-#pragma pack(1)
-typedef struct {
-	float time;
-	float position[3];
-	float angle[3];
-	float velocity[3];
-	float angVelocity[3];
-	float angMomentum[3];
-	char reserved[36];
-} CarRecordForSave;
-#pragma pack()
+typedef enum {
+	ONEP_PLAY, TWOP_PLAY, TITLE_QUIT
+} TitleMenuItem;
 
 typedef enum {
 	GO_TO_TITLE, RETRY, QUIT
@@ -49,7 +37,6 @@ static struct {
 	float direction[2];
 	float action;
 	float collision;
-	float quit;
 	float backCamera;
 	float resetCamera;
 } controller;
@@ -57,16 +44,20 @@ static struct {
 static FontSJIS shnm12;
 static FontSJIS shnm16b;
 
-static Controller keyboard, menuController;
-static ControllerData wasd[4], action, collision, quit, arrow[4], backCamera, resetCamera;
-static ControllerData quitMenu, downArrow, upArrow, enterKey;
+static int titleMenuEntered;
+static int titleMenuSelect;
+static ControllerData *wasd[4], *action, *collision, *menu, *arrow[4], *backCamera, *resetCamera;
+static ControllerData *enterKey;
 static int menuSelect;
 
 static Image hero, opponentImage;
 static Image course;
 static Image stageImage;
 
-static Scene scene;
+static Scene titleScene;
+static Node titleNode, titleMenuNode;
+
+static Scene raceScene;
 static Node speedNode, lapNode, rankNode, centerNode, timeNode, replayNode;
 static Node mapNode;
 static Node lapJudgmentNodes[3];
@@ -88,90 +79,31 @@ static int heroLapScore, opponentLapScore;
 static int heroPreviousLap = -1, opponentPreviousLap = -1;
 static int collisionFlag;
 static int rank;
-static int isRaceStarted, isfinished, isReplaying;
+static int isTitle, isRaceStarted, isfinished, isReplaying;
+static int isWrongWay;
 static int isMenuOpened;
 static float menuTransition;
-static int quitPrevious;
 static float finishedTime;
 static float currentTime;
 static float handle, accel;
 static float heroAngle;
 
-static Vector heroRecords, opponentRecords;
+static Vector titleRecords, heroRecords, opponentRecords;
 
 static Sound bgm;
 
-static void addCarRecord(Vector *records, float time, float position[3], float angle[3], float velocity[3], float angVelocity[3], float angMomentum[3]) {
-	CarRecord record;
-	record.time = time;
-	memcpy_s(record.position, SIZE_VEC3, position, SIZE_VEC3);
-	memcpy_s(record.angle, SIZE_VEC3, angle, SIZE_VEC3);
-	memcpy_s(record.velocity, SIZE_VEC3, velocity, SIZE_VEC3);
-	memcpy_s(record.angVelocity, SIZE_VEC3, angVelocity, SIZE_VEC3);
-	memcpy_s(record.angMomentum, SIZE_VEC3, angMomentum, SIZE_VEC3);
-	pushAlloc(records, sizeof(CarRecord), &record);
+void deinitGame(void);
+
+static void quitGame(void) {
+	deinitGame();
+	deinitCNSG();
+	ExitProcess(0);
 }
 
-static void recordCar(Vector *records, Node *node, float time) {
-	if(records->length < 36000) addCarRecord(records, time, node->position, node->angle, node->velocity, node->angVelocity, node->angMomentum);
-}
-
-static int playCar(Vector *records, Node *node, float time) {
-	CarRecord *record;
-	record = nextData(records);
-	if(record == NULL) return -1;
-	if(record->time > time) {
-		previousData(records);
-	} else {
-		memcpy_s(node->position, SIZE_VEC3, record->position, SIZE_VEC3);
-		memcpy_s(node->angle, SIZE_VEC3, record->angle, SIZE_VEC3);
-		memcpy_s(node->velocity, SIZE_VEC3, record->velocity, SIZE_VEC3);
-		memcpy_s(node->angVelocity, SIZE_VEC3, record->angVelocity, SIZE_VEC3);
-		memcpy_s(node->angMomentum, SIZE_VEC3, record->angMomentum, SIZE_VEC3);
-		while(record->time > time) record = nextData(records);
-	}
-	return 0;
-}
-
-static void saveRecord(Vector *records, const char path[]) {
-	FILE *file;
-	CarRecord *record;
-	if(fopen_s(&file, path, "wb")) {
-		printf("saveRecord: Failed to open a file: %s\n", path);
-	} else {
-		iterf(records, &record) {
-			CarRecordForSave data;
-			data.time = record->time;
-			memcpy_s(data.position, SIZE_VEC3, record->position, SIZE_VEC3);
-			memcpy_s(data.angle, SIZE_VEC3, record->angle, SIZE_VEC3);
-			memcpy_s(data.velocity, SIZE_VEC3, record->velocity, SIZE_VEC3);
-			memcpy_s(data.angVelocity, SIZE_VEC3, record->angVelocity, SIZE_VEC3);
-			memcpy_s(data.angMomentum, SIZE_VEC3, record->angMomentum, SIZE_VEC3);
-			fwrite(&data, sizeof(CarRecordForSave), 1, file);
-		}
-		fclose(file);
-	}
-}
-
-static void loadRecord(Vector *records, const char path[]) {
-	FILE *file;
-	*records = initVector();
-	if(fopen_s(&file, path, "rb")) {
-		printf("loadRecord: Failed to open a file: %s\n", path);
-	} else {
-		CarRecordForSave data;
-		size_t count;
-		for(count = fread_s(&data, sizeof(CarRecordForSave), sizeof(CarRecordForSave), 1, file);count == 1;count = fread_s(&data, sizeof(CarRecordForSave), sizeof(CarRecordForSave), 1, file)) {
-			addCarRecord(records, data.time, data.position, data.angle, data.velocity, data.angVelocity, data.angMomentum);
-		}
-		fclose(file);
-	}
-}
-
-static void replay() {
+static void replay(void) {
 	opponentNode.isVisible = TRUE;
 	opponentMarkerNode.isVisible = TRUE;
-	scene.clock = 0.0F;
+	raceScene.clock = 0.0F;
 	resetIteration(&opponentRecords);
 }
 
@@ -205,72 +137,83 @@ static float convVelocityToSpeed(float velocity[3]) {
 	return length3(velocity) * 3600 / 10000;
 }
 
-static void updateLapScore(unsigned int flags, int *previousLap, int *lapScore) {
+static int updateLapScore(unsigned int flags, int *previousLap, int *lapScore, int wrongWay) {
 	if(flags & LAPA_COLLISIONMASK) {
 		if(*previousLap == 2) {
 			*lapScore += 1;
+			wrongWay = FALSE;
 		} else if(*previousLap == 1) {
 			*lapScore -= 1;
+			wrongWay = TRUE;
 		}
 		*previousLap = 0;
 	}
 	if(flags & LAPB_COLLISIONMASK) {
 		if(*previousLap == 0) {
 			*lapScore += 1;
+			wrongWay = FALSE;
 		} else if(*previousLap == 2) {
 			*lapScore -= 1;
+			wrongWay = TRUE;
 		}
 		*previousLap = 1;
 	}
 	if(flags & LAPC_COLLISIONMASK) {
 		if(*previousLap == 1) {
 			*lapScore += 1;
+			wrongWay = FALSE;
 		} else if(*previousLap == 0) {
 			*lapScore -= 1;
+			wrongWay = TRUE;
 		}
 		*previousLap = 2;
 	}
+	return wrongWay;
 }
 
 static int heroBehaviour(Node *node) {
 	float front[3];
-	if(isRaceStarted) {
-		if(isfinished) {
-			if(isReplaying) {
-				if(playCar(&heroRecords, node, currentTime)) replay();
-			} else {
-				controlCar(node, 0.0F, 0.0F, front);
-			}
-		} else {
-			recordCar(&heroRecords, node, currentTime);
-			if(node->collisionFlags & COURSE_COLLISIONMASK) {
-				float upper[3] = { 0.0F, 25.0F, 0.0F };
-				if(heroAngle < 0.75F) {
-					heroAngle = controlCar(node, 0.0F, 0.0F, front);
+	if(isTitle) {
+		if(playCar(&titleRecords, node, titleScene.clock)) titleScene.clock = 0.0F;
+	} else {
+		if(isRaceStarted) {
+			if(isfinished) {
+				if(isReplaying) {
+					if(playCar(&heroRecords, node, currentTime)) replay();
 				} else {
-					heroAngle = controlCar(node, accel, controller.move[0], front);
+					controlCar(node, 0.0F, 0.0F, front);
 				}
-				if(heroAngle < 0.0F) {
-					node->angle[0] = 0.0F;
-					node->angle[2] = 0.0F;
-					node->angVelocity[0] = 0.0F;
-					node->angVelocity[2] = 0.0F;
-					node->angMomentum[0] = 0.0F;
-					node->angMomentum[2] = 0.0F;
+			} else {
+				recordCar(&heroRecords, node, currentTime);
+				if(node->collisionFlags & COURSE_COLLISIONMASK) {
+					float upper[3] = { 0.0F, 25.0F, 0.0F };
+					if(heroAngle < 0.75F) {
+						heroAngle = controlCar(node, 0.0F, 0.0F, front);
+					} else {
+						heroAngle = controlCar(node, accel, controller.move[0], front);
+					}
+					if(heroAngle < 0.0F) {
+						node->angle[0] = 0.0F;
+						node->angle[2] = 0.0F;
+						node->angVelocity[0] = 0.0F;
+						node->angVelocity[2] = 0.0F;
+						node->angMomentum[0] = 0.0F;
+						node->angMomentum[2] = 0.0F;
+					}
+					mulVec3ByScalar(front, -75.0F, nextCameraPosition);
+					addVec3(nextCameraPosition, upper, nextCameraPosition);
 				}
-				mulVec3ByScalar(front, -75.0F, nextCameraPosition);
-				addVec3(nextCameraPosition, upper, nextCameraPosition);
 			}
 		}
+		if(node->collisionFlags & DIRT_COLLISIONMASK) {
+			node->collisionShape.dynamicFriction = 1.0F;
+		} else {
+			node->collisionShape.dynamicFriction = 0.1F;
+		}
+		isWrongWay = updateLapScore(node->collisionFlags, &heroPreviousLap, &heroLapScore, isWrongWay);
+		memcpy_s(heroMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
+		memcpy_s(heroMarkerNode.angle, SIZE_VEC3, node->angle, SIZE_VEC3);
 	}
-	if(node->collisionFlags & DIRT_COLLISIONMASK) {
-		node->collisionShape.dynamicFriction = 1.0F;
-	} else {
-		node->collisionShape.dynamicFriction = 0.1F;
-	}
-	updateLapScore(node->collisionFlags, &heroPreviousLap, &heroLapScore);
-	memcpy_s(heroMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
-	memcpy_s(heroMarkerNode.angle, SIZE_VEC3, node->angle, SIZE_VEC3);
 	return TRUE;
 }
 
@@ -281,7 +224,7 @@ static int opponentBehaviour(Node *node) {
 			opponentMarkerNode.isVisible = FALSE;
 		}
 	}
-	updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore);
+	updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore, FALSE);
 	memcpy_s(opponentMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
 	memcpy_s(opponentMarkerNode.angle, SIZE_VEC3, node->angle, SIZE_VEC3);
 	return TRUE;
@@ -289,13 +232,13 @@ static int opponentBehaviour(Node *node) {
 
 static int timeBehaviour(Node *node) {
 	if(isfinished) {
-		currentTime = scene.clock;
+		currentTime = raceScene.clock;
 	} else {
 		if(isRaceStarted) {
 			char buffer[14];
 			int minutes;
 			float seconds;
-			currentTime = scene.clock - 3.0F;
+			currentTime = raceScene.clock - 3.0F;
 			minutes = currentTime / 60;
 			seconds = currentTime - 60.0F * minutes;
 			if(minutes > 9) {
@@ -326,7 +269,7 @@ static int speedBehaviour(Node *node) {
 static int lapBehaviour(Node *node) {
 	if(isfinished) {
 		if(!isReplaying) {
-			if(scene.clock - finishedTime > 3.0F) {
+			if(raceScene.clock - finishedTime > 3.0F) {
 				replay();
 				isReplaying = TRUE;
 			}
@@ -336,7 +279,7 @@ static int lapBehaviour(Node *node) {
 		int lap = max(heroLapScore / 45 + 1, 1);
 		if(lap > 3) {
 			isfinished = TRUE;
-			finishedTime = scene.clock;
+			finishedTime = raceScene.clock;
 		} else {
 			sprintf(buffer, "LAP %d/3", lap);
 			drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
@@ -361,7 +304,7 @@ static void raceStarted(void) {
 }
 
 static int centerBehaviour(Node *node) {
-	float elapsed = 4.0F - scene.clock;
+	float elapsed = 4.0F - raceScene.clock;
 	if(isRaceStarted) {
 		if(isfinished) {
 			if(!isReplaying) {
@@ -374,7 +317,12 @@ static int centerBehaviour(Node *node) {
 			if(elapsed > 0.0F) {
 				drawTextSJIS(node->texture, shnm16b, 0, 0, "START! ");
 			} else {
-				node->isVisible = FALSE;
+				if(isWrongWay) {
+					node->isVisible = TRUE;
+					drawTextSJIS(node->texture, shnm16b, 0, 0, " ‹t‘–! ");
+				} else {
+					node->isVisible = FALSE;
+				}
 			}
 		}
 	} else {
@@ -415,6 +363,25 @@ static int menuBehaviour(Node *node) {
 	return TRUE;
 }
 
+static int titleMenuBehaviour(Node *node) {
+	if(titleMenuEntered) {
+		switch(titleMenuSelect) {
+			case 0:
+				drawTextSJIS(node->texture, shnm12, 0, 0, " >1P PLAY  \n  2P PLAY  \n  QUIT     ");
+				break;
+			case 1:
+				drawTextSJIS(node->texture, shnm12, 0, 0, "  1P PLAY  \n >2P PLAY  \n  QUIT     ");
+				break;
+			case 2:
+				drawTextSJIS(node->texture, shnm12, 0, 0, "  1P PLAY  \n  2P PLAY  \n >QUIT     ");
+				break;
+		}
+	} else {
+		drawTextSJIS(node->texture, shnm12, 0, 0, "PRESS ENTER\n           \n           ");
+	}
+	return TRUE;
+}
+
 static Node initCarRayNode(const char id[]) {
 	Node carRayNode;
 	carRayNode = initNode(id, NO_IMAGE);
@@ -435,6 +402,8 @@ static int mapBehaviour(Node *node) {
 }
 
 static void startGame(void) {
+	isTitle = FALSE;
+
 	if(bgm) StopSound(bgm);
 
 	cameraAngle = 0.0F;
@@ -473,35 +442,87 @@ static void startGame(void) {
 	clearVec3(opponentNode.angVelocity);
 	clearVec3(opponentNode.angMomentum);
 
-	clearVector(&scene.nodes);
-	pushUntilNull(&scene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, &replayNode, NULL);
-	pushUntilNull(&scene.nodes, &mapNode, NULL);
-	pushUntilNull(&scene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
-	pushUntilNull(&scene.nodes, &heroNode, &opponentNode, NULL);
-	pushUntilNull(&scene.nodes, &courseNode, &courseDirtNode, NULL);
-	push(&scene.nodes, &stageNode);
+	clearVector(&raceScene.nodes);
+	pushUntilNull(&raceScene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, &replayNode, NULL);
+	pushUntilNull(&raceScene.nodes, &mapNode, NULL);
+	pushUntilNull(&raceScene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
+	pushUntilNull(&raceScene.nodes, &heroNode, &opponentNode, NULL);
+	pushUntilNull(&raceScene.nodes, &courseNode, &courseDirtNode, NULL);
+	push(&raceScene.nodes, &stageNode);
 
-	scene.clock = 0.0F;
+	raceScene.clock = 0.0F;
+}
+
+static void startTitle(void) {
+	isTitle = TRUE;
+	titleMenuEntered = FALSE;
+	if(bgm) StopSound(bgm);
+	resetIteration(&titleRecords);
+	heroNode.position[0] = 600.0F;
+	heroNode.position[1] = 75.0F;
+	heroNode.position[2] = 0.0F;
+	clearVec3(heroNode.velocity);
+	clearVec3(heroNode.angle);
+	clearVec3(heroNode.angVelocity);
+	clearVec3(heroNode.angMomentum);
+	titleScene.clock = 0.0F;
 }
 
 static void upArrowEvent(void) {
+	titleMenuSelect = titleMenuSelect <= 0 ? 2 : titleMenuSelect - 1;
 	menuSelect = menuSelect <= 0 ? 2 : menuSelect - 1;
 }
 
 static void downArrowEvent(void) {
+	titleMenuSelect = titleMenuSelect >= 2 ? 0 : titleMenuSelect + 1;
 	menuSelect = menuSelect >= 2 ? 0 : menuSelect + 1;
 }
 
 static void enterKeyEvent(void) {
-	switch(menuSelect) {
-		case RETRY:
-			isMenuOpened = FALSE;
-			startGame();
-			break;
+	if(isMenuOpened) {
+		switch(menuSelect) {
+			case GO_TO_TITLE:
+				isMenuOpened = FALSE;
+				startTitle();
+				break;
+			case RETRY:
+				isMenuOpened = FALSE;
+				startGame();
+				break;
+			case QUIT:
+				// saveRecord(&heroRecords, "./carRecords/title.crd");
+				quitGame();
+				break;
+		}
+	} else if(isTitle) {
+		if(titleMenuEntered) {
+			switch(titleMenuSelect) {
+				case ONEP_PLAY:
+					startGame();
+					break;
+				case TWOP_PLAY:
+					break;
+				case TITLE_QUIT:
+					quitGame();
+					break;
+			}
+		} else {
+			titleMenuEntered = TRUE;
+			titleMenuSelect = 0;
+		}
 	}
 }
 
-static void sceneBehaviour(Scene *_scene, float elapsed) {
+static void menuEvent(void) {
+	if(isTitle) {
+		titleMenuEntered = FALSE;
+	} else {
+		menuSelect = 0;
+		isMenuOpened = !isMenuOpened;
+	}
+}
+
+static void raceSceneBehaviour(Scene *scene, float elapsed) {
 	float tempVec3[2][3];
 	float tempMat4[1][4][4];
 	float tempMat3[1][3][3];
@@ -519,13 +540,13 @@ static void sceneBehaviour(Scene *_scene, float elapsed) {
 	}
 	if(!isReplaying) accel += 0.3F * (controller.move[1] - accel);
 	cameraFov = min(PI / 3.0F * 1.5F, max(PI / 3.0F, cameraFov - 0.05F * controller.arrow[1]));
-	scene.camera.fov = cameraFov + accel / 5.0F;
+	raceScene.camera.fov = cameraFov + accel / 5.0F;
 	addVec3(currentCameraPosition, mulVec3ByScalar(subVec3(nextCameraPosition, currentCameraPosition, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), currentCameraPosition);
 	cameraAngle -= 0.1F * controller.arrow[0];
 	if(controller.resetCamera) cameraAngle -= 0.3F * cameraAngle;
 	handle += 0.3F * (controller.move[0] - handle);
 	genRotationMat4(0.0F, cameraAngle, 0.0F, tempMat4[0]);
-	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), currentCameraPosition, scene.camera.position);
+	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), currentCameraPosition, raceScene.camera.position);
 }
 
 static void initGame(void) {
@@ -534,36 +555,34 @@ static void initGame(void) {
 	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
 	shnm16b = initFontSJIS(loadBitmap("assets/shnm8x16rb.bmp", NULL_COLOR), loadBitmap("assets/shnmk16b.bmp", NULL_COLOR), 8, 16, 16);
 
-	keyboard = initController();
 	initControllerDataCross(wasd, 'W', 'A', 'S', 'D', controller.move);
 	initControllerDataCross(arrow, VK_UP, VK_LEFT, VK_DOWN, VK_RIGHT, controller.arrow);
 	action = initControllerData(VK_SPACE, 1.0F, 0.0F, &controller.action);
 	collision = initControllerData(VK_F1, 1.0F, 0.0F, &controller.collision);
 	backCamera = initControllerData(VK_SHIFT, 1.0F, 0.0F, &controller.backCamera);
 	resetCamera = initControllerData(VK_SPACE, 1.0F, 0.0F, &controller.resetCamera);
-	quit = initControllerData(VK_ESCAPE, 1.0F, 0.0F, &controller.quit);
-	pushUntilNull(&keyboard.events, &wasd[0], &wasd[1], &wasd[2], &wasd[3], NULL);
-	pushUntilNull(&keyboard.events, &arrow[0], &arrow[1], &arrow[2], &arrow[3], NULL);
-	pushUntilNull(&keyboard.events, &action, &quit, &collision, &backCamera, &resetCamera, NULL);
-
-	menuController = initController();
-	quitMenu = initControllerData(VK_ESCAPE, 1.0F, 0.0F, NULL);
-	upArrow = initControllerEvent(VK_UP, NULL, upArrowEvent);
-	downArrow = initControllerEvent(VK_DOWN, NULL, downArrowEvent);
+	menu = initControllerEvent(VK_ESCAPE, NULL, menuEvent);
+	initControllerEvent(VK_UP, NULL, upArrowEvent);
+	initControllerEvent(VK_DOWN, NULL, downArrowEvent);
 	enterKey = initControllerEvent(VK_RETURN, NULL, enterKeyEvent);
-	pushUntilNull(&menuController.events, &quitMenu, &upArrow, &downArrow, &enterKey, NULL);
 
 	hero = loadBitmap("assets/subaru.bmp", NULL_COLOR);
 	opponentImage = loadBitmap("assets/subaru2p.bmp", NULL_COLOR);
 	course = loadBitmap("assets/courseMk2.bmp", NULL_COLOR);
-	scene = initScene();
-	scene.camera.parent = &heroNode;
-	scene.camera.positionMask[1] = TRUE;
-	scene.camera.aspect = SCREEN_ASPECT;
-	scene.camera.isRotationDisabled = TRUE;
-	scene.camera.farLimit = 3000.0F;
-	scene.background = BLUE;
-	scene.behaviour = sceneBehaviour;
+
+	raceScene = initScene();
+	raceScene.camera.parent = &heroNode;
+	raceScene.camera.positionMask[1] = TRUE;
+	raceScene.camera.aspect = SCREEN_ASPECT;
+	raceScene.camera.farLimit = 3000.0F;
+	raceScene.background = BLUE;
+	titleScene = raceScene;
+	raceScene.camera.isRotationDisabled = TRUE;
+	raceScene.behaviour = raceSceneBehaviour;
+	titleScene.camera.position[0] = 0.0F;
+	titleScene.camera.position[1] = 25.0F;
+	titleScene.camera.position[2] = 50.0F;
+	pushUntilNull(&titleScene.nodes, &titleNode, &titleMenuNode, &heroNode, &courseNode, &stageNode, NULL);
 
 	courseNode = initNode("course", course);
 	initShapeFromObj(&courseNode.shape, "./assets/courseMk2.obj", 1.0F);
@@ -618,6 +637,9 @@ static void initGame(void) {
 		lapJudgmentNodes[i].isThrough = TRUE;
 	}
 
+	titleNode =	initNodeText("title", CENTER_X(104), CENTER_Y(16) - 16, 104, 16, NULL);
+	drawTextSJIS(titleNode.texture, shnm16b, 0, 0, "COARSE RACING");
+	titleMenuNode =	initNodeText("titleMenu", CENTER_X(66), CENTER_Y(12) + 12, 66, 36, titleMenuBehaviour);
 	timeNode = initNodeText("time", -78.0F, 0.0F, 78, 12, timeBehaviour);
 	speedNode = initNodeText("speed", -60.0F, 12.0F, 60, 12, speedBehaviour);
 	lapNode = initNodeText("lap", 0.0F, 0.0F, 42, 12, lapBehaviour);
@@ -631,7 +653,7 @@ static void initGame(void) {
 	divVec3ByScalar(mapNode.scale, 4.0F, mapNode.scale);
 
 	menuScene = initScene();
-	menuNode = initNodeText("quit", 6.0F, (SCREEN_HEIGHT - 36.0F) / 2.0F, 66, 36, menuBehaviour);
+	menuNode = initNodeText("menu", 6.0F, CENTER_Y(36), 66, 36, menuBehaviour);
 	push(&menuScene.nodes, &menuNode);
 
 	mapScene = initScene();
@@ -653,9 +675,10 @@ static void initGame(void) {
 	push(&mapScene.nodes, &opponentMarkerNode);
 
 	loadRecord(&opponentRecords, "./carRecords/record.crd");
+	loadRecord(&titleRecords, "./carRecords/title.crd");
 }
 
-static void deinitGame(void) {
+void deinitGame(void) {
 	discardShape(heroNode.shape);
 	discardShape(courseNode.shape);
 	discardShape(courseNode.collisionShape);
@@ -665,17 +688,27 @@ static void deinitGame(void) {
 	freeImage(shnm12.font0201);
 	freeImage(shnm12.font0208);
 	freeImage(hero);
-	discardScene(&scene);
+	discardScene(&raceScene);
 }
 
 int loop(float elapsed, Image *out, int sleep) {
 	Image sceneImage;
 	float menuTransitionTemp;
-	if(controller.backCamera) {
-		scene.camera.position[0] *= -1.0F;
-		scene.camera.position[2] *= -1.0F;
+	if(!isMenuOpened) {
+		if(isTitle) {
+			updateScene(&titleScene, elapsed);
+		} else {
+			updateScene(&raceScene, elapsed / 2.0F);
+			updateScene(&raceScene, elapsed / 2.0F);
+		}
+	} else {
+		updateScene(&menuScene, elapsed);
 	}
-	sceneImage = drawScene(&scene);
+	if(controller.backCamera) {
+		raceScene.camera.position[0] *= -1.0F;
+		raceScene.camera.position[2] *= -1.0F;
+	}
+	sceneImage = isTitle ? drawScene(&titleScene) : drawScene(&raceScene);
 	menuTransitionTemp = menuTransition < 0.1F ? 0.0F : 0.5F * menuTransition;
 	if(menuTransitionTemp == 0.0F) {
 		*out = sceneImage;
@@ -687,42 +720,18 @@ int loop(float elapsed, Image *out, int sleep) {
 		freeImage(sceneImage);
 	}
 	if(controller.backCamera) {
-		scene.camera.position[0] *= -1.0F;
-		scene.camera.position[2] *= -1.0F;
+		raceScene.camera.position[0] *= -1.0F;
+		raceScene.camera.position[2] *= -1.0F;
 	}
-	if(!isMenuOpened) {
-		clearController(&menuController);
-		updateController(keyboard);
-		updateScene(&scene, elapsed / 2.0F);
-		updateScene(&scene, elapsed / 2.0F);
-		updateScene(&menuScene, elapsed);
-	} else {
-		clearController(&keyboard);
-		updateController(menuController);
-		updateScene(&menuScene, elapsed);
-	}
-	if(controller.quit || sleep) {
-		isMenuOpened = TRUE;
-	} else if(quitMenu.state) {
-		isMenuOpened = FALSE;
-	}
-	if(enterKey.state && menuSelect == QUIT) {
-		// saveRecord(&heroRecords, "./carRecords/title.crd");
-		return FALSE;
-	}
-	quitPrevious = controller.quit;
 	menuTransition += 0.75F * (isMenuOpened - menuTransition);
 	return TRUE;
 }
 
 // item.
-// title
 // effect, animation
 
 int WINAPI ctrlCHandler(DWORD dwCtrlType) {
-	deinitGame();
-	deinitCNSG();
-	ExitProcess(0);
+	quitGame();
 	return TRUE;
 }
 
@@ -730,7 +739,8 @@ int main(int argc, char *argv[]) {
 	initCNSG(argc, argv, SCREEN_WIDTH, SCREEN_HEIGHT);
 	SetConsoleCtrlHandler(ctrlCHandler, TRUE);
 	initGame();
-	startGame();
+	freeImage(drawScene(&raceScene));
+	startTitle();
 	gameLoop(FRAME_PER_SECOND, loop);
 	deinitGame();
 	deinitCNSG();

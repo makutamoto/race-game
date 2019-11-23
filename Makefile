@@ -18,7 +18,7 @@ game-clang.exe: cnsglib-clang $(OBJS_CLANG)
 cnsglib-clang:
 	cd cnsglib && make
 
-objs/%.o: %.c
+objs/%.o: %.c ./include/*.h
 	clang -Wall -c $< -o $@ -Wno-invalid-source-encoding
 
 game-bcc32.exe: cnsglib-bcc32 $(OBJS_BCC32)
@@ -28,5 +28,5 @@ game-bcc32.exe: cnsglib-bcc32 $(OBJS_BCC32)
 cnsglib-bcc32:
 	cd cnsglib && make bcc32
 
-objs/%.obj: %.c
+objs/%.obj: %.c ./include/*.h
 	bcc32 -wAll -o"$@" -c $<
