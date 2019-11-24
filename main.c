@@ -9,7 +9,6 @@
 
 #define SCREEN_HEIGHT 128
 #define SCREEN_WIDTH 180 // 1.414 * SCREEN_HEIGHT
-#define SCREEN_ASPECT ((float)SCREEN_WIDTH / SCREEN_HEIGHT)
 #define FRAME_PER_SECOND 60
 
 #define CAR_COLLISIONMASK 0x01
@@ -33,9 +32,7 @@ typedef enum {
 
 static struct {
 	float move[2];
-	float arrow[4];
-	float direction[2];
-	float action;
+	float arrow[2];
 	float collision;
 	float backCamera;
 	float resetCamera;
@@ -46,7 +43,7 @@ static FontSJIS shnm16b;
 
 static int titleMenuEntered;
 static int titleMenuSelect;
-static ControllerData *wasd[4], *action, *collision, *menu, *arrow[4], *backCamera, *resetCamera;
+static ControllerData *wasd[4], *collision, *menu, *arrow[4], *backCamera, *resetCamera;
 static ControllerData *enterKey;
 static int menuSelect;
 
@@ -58,11 +55,13 @@ static Scene titleScene;
 static Node titleNode, titleMenuNode;
 
 static Scene raceScene;
-static Node speedNode, lapNode, rankNode, centerNode, timeNode, replayNode;
+static Camera camera2P;
+static Node speedNode, lapNode, rankNode, finishNode, centerNode, timeNode, replayNode, wrongWayNode;
+static Node speed2pNode, lap2pNode, rank2pNode;
 static Node mapNode;
 static Node lapJudgmentNodes[3];
-static Node heroNode, heroRayNode;
-static Node opponentNode, opponentRayNode;
+static Node heroNode;
+static Node opponentNode;
 static Node heroMarkerNode, opponentMarkerNode;
 static Node courseNode, courseMapNode, courseDirtNode;
 static Node stageNode;
@@ -72,23 +71,23 @@ static Node menuNode;
 
 static Scene mapScene;
 
-static float nextCameraPosition[3];
+static float nextCameraPosition[3], opponentNextCameraPosition[3];
 static float currentCameraPosition[3];
 static float cameraAngle, cameraFov;
 static int heroLapScore, opponentLapScore;
 static int heroPreviousLap = -1, opponentPreviousLap = -1;
 static int collisionFlag;
-static int rank;
-static int isTitle, isRaceStarted, isfinished, isReplaying;
-static int isWrongWay;
+static int is2p;
+static int isTitle, isRaceStarted, isFinished, isHeroFinished, isOpponentFinished, isReplaying;
+static int isWrongWay, isWrongWay2p;
 static int isMenuOpened;
 static float menuTransition;
 static float finishedTime;
 static float currentTime;
-static float handle, accel;
-static float heroAngle;
+static float heroAccel, opponentAccel;
+static char rankList[][4] = { "1st", "2nd" };
 
-static Vector titleRecords, heroRecords, opponentRecords;
+static Vector titleRecords, heroRecords, opponentRecords, opponent2pRecords;
 
 static Sound bgm;
 
@@ -101,15 +100,15 @@ static void quitGame(void) {
 }
 
 static void replay(void) {
-	opponentNode.isVisible = TRUE;
-	opponentMarkerNode.isVisible = TRUE;
+	isWrongWay = FALSE;
+	if(is2p) {
+		isWrongWay2p = FALSE;
+	} else {
+		opponentNode.isVisible = TRUE;
+		opponentMarkerNode.isVisible = TRUE;
+		resetIteration(&opponentRecords);
+	}
 	raceScene.clock = 0.0F;
-	resetIteration(&opponentRecords);
-}
-
-static void printCenter(const char text[10]) {
-	drawTextSJIS(centerNode.texture, shnm16b, 0, 0, (char*)text);
-	centerNode.isVisible = TRUE;
 }
 
 static float controlCar(Node *node, float accel, float handle, float front[3]) {
@@ -117,20 +116,31 @@ static float controlCar(Node *node, float accel, float handle, float front[3]) {
 	float tempMat3[1][3][3];
 	float tempMat4[1][4][4];
 	float velocityLengthH;
+	float angle;
+	if(node->collisionFlags & DIRT_COLLISIONMASK) {
+		node->collisionShape.dynamicFriction = 1.0F;
+	} else {
+		node->collisionShape.dynamicFriction = 0.1F;
+	}
 	convMat4toMat3(genRotationMat4(node->angle[0], node->angle[1], node->angle[2], tempMat4[0]), tempMat3[0]);
+	initVec3(tempVec3[0], Y_MASK);
+	mulMat3Vec3(tempMat3[0], tempVec3[0], tempVec3[1]);
+	initVec3(tempVec3[0], Y_MASK);
+	angle =	cosVec3(tempVec3[0], tempVec3[1]);
+	if(angle < 0.75F) {
+		accel = 0.0F;
+		handle = 0.0F;
+	}
 	initVec3(tempVec3[0], Z_MASK);
 	mulMat3Vec3(tempMat3[0], tempVec3[0], front);
 	normalize3(extractComponents3(front, XZ_MASK, tempVec3[0]), tempVec3[1]);
 	extractComponents3(node->velocity, XZ_MASK, tempVec3[0]);
 	velocityLengthH = length3(tempVec3[0]);
-	mulVec3ByScalar(tempVec3[1], velocityLengthH * node->shape.mass + accel * 150000.0F, tempVec3[0]);
-	subVec3(tempVec3[0], mulVec3ByScalar(node->velocity, node->shape.mass, tempVec3[2]), tempVec3[1]);
+	mulVec3ByScalar(tempVec3[1], velocityLengthH * node->collisionShape.mass + accel * 150000.0F, tempVec3[0]);
+	subVec3(tempVec3[0], mulVec3ByScalar(node->velocity, node->collisionShape.mass, tempVec3[2]), tempVec3[1]);
 	applyForce(node, tempVec3[1], XZ_MASK, FALSE);
 	if(velocityLengthH > 1.0F) node->torque[1] += handle * max(velocityLengthH * 5000.0F, 2500000.0F);
-	initVec3(tempVec3[0], Y_MASK);
-	mulMat3Vec3(tempMat3[0], tempVec3[0], tempVec3[1]);
-	initVec3(tempVec3[0], Y_MASK);
-	return cosVec3(tempVec3[0], tempVec3[1]);
+	return angle;
 }
 
 static float convVelocityToSpeed(float velocity[3]) {
@@ -177,38 +187,29 @@ static int heroBehaviour(Node *node) {
 		if(playCar(&titleRecords, node, titleScene.clock)) titleScene.clock = 0.0F;
 	} else {
 		if(isRaceStarted) {
-			if(isfinished) {
-				if(isReplaying) {
-					if(playCar(&heroRecords, node, currentTime)) replay();
-				} else {
-					controlCar(node, 0.0F, 0.0F, front);
-				}
+			if(isReplaying) {
+				if(playCar(&heroRecords, node, currentTime)) replay();
 			} else {
 				recordCar(&heroRecords, node, currentTime);
 				if(node->collisionFlags & COURSE_COLLISIONMASK) {
 					float upper[3] = { 0.0F, 25.0F, 0.0F };
-					if(heroAngle < 0.75F) {
-						heroAngle = controlCar(node, 0.0F, 0.0F, front);
+					if(heroLapScore >= 3 * 45) {
+						isHeroFinished = TRUE;
+						controlCar(node, 0, 0, front);
 					} else {
-						heroAngle = controlCar(node, accel, controller.move[0], front);
-					}
-					if(heroAngle < 0.0F) {
-						node->angle[0] = 0.0F;
-						node->angle[2] = 0.0F;
-						node->angVelocity[0] = 0.0F;
-						node->angVelocity[2] = 0.0F;
-						node->angMomentum[0] = 0.0F;
-						node->angMomentum[2] = 0.0F;
+						if(controlCar(node, heroAccel, controller.move[0], front) < 0.0F) {
+							node->angle[0] = 0.0F;
+							node->angle[2] = 0.0F;
+							node->angVelocity[0] = 0.0F;
+							node->angVelocity[2] = 0.0F;
+							node->angMomentum[0] = 0.0F;
+							node->angMomentum[2] = 0.0F;
+						}
 					}
 					mulVec3ByScalar(front, -75.0F, nextCameraPosition);
 					addVec3(nextCameraPosition, upper, nextCameraPosition);
 				}
 			}
-		}
-		if(node->collisionFlags & DIRT_COLLISIONMASK) {
-			node->collisionShape.dynamicFriction = 1.0F;
-		} else {
-			node->collisionShape.dynamicFriction = 0.1F;
 		}
 		isWrongWay = updateLapScore(node->collisionFlags, &heroPreviousLap, &heroLapScore, isWrongWay);
 		memcpy_s(heroMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
@@ -219,19 +220,49 @@ static int heroBehaviour(Node *node) {
 
 static int opponentBehaviour(Node *node) {
 	if(isRaceStarted) {
-		if(playCar(&opponentRecords, node, currentTime)) {
-			node->isVisible = FALSE;
-			opponentMarkerNode.isVisible = FALSE;
+		switch(titleMenuSelect) {
+			case ONEP_PLAY:
+				if(playCar(&opponentRecords, node, currentTime)) {
+					node->isVisible = FALSE;
+					opponentMarkerNode.isVisible = FALSE;
+				}
+				break;
+			case TWOP_PLAY:
+				if(isReplaying) {
+					playCar(&opponent2pRecords, node, currentTime);
+				} else {
+					recordCar(&opponent2pRecords, node, currentTime);
+					if(node->collisionFlags & COURSE_COLLISIONMASK) {
+						float upper[3] = { 0.0F, 25.0F, 0.0F };
+						float front[3];
+						if(opponentLapScore >= 3 * 45) {
+							isOpponentFinished = TRUE;
+							controlCar(node, 0.0F, 0.0F, front);
+						} else {
+							if(controlCar(node, opponentAccel, controller.arrow[0], front) < 0.0F) {
+								node->angle[0] = 0.0F;
+								node->angle[2] = 0.0F;
+								node->angVelocity[0] = 0.0F;
+								node->angVelocity[2] = 0.0F;
+								node->angMomentum[0] = 0.0F;
+								node->angMomentum[2] = 0.0F;
+							}
+						}
+						mulVec3ByScalar(front, -75.0F, opponentNextCameraPosition);
+						addVec3(opponentNextCameraPosition, upper, opponentNextCameraPosition);
+					}
+				}
+				break;
 		}
 	}
-	updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore, FALSE);
+	isWrongWay2p = updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore, isWrongWay2p);
 	memcpy_s(opponentMarkerNode.position, SIZE_VEC3, node->position, SIZE_VEC3);
 	memcpy_s(opponentMarkerNode.angle, SIZE_VEC3, node->angle, SIZE_VEC3);
 	return TRUE;
 }
 
 static int timeBehaviour(Node *node) {
-	if(isfinished) {
+	if((!is2p && isHeroFinished) || (isHeroFinished && isOpponentFinished)) {
 		currentTime = raceScene.clock;
 	} else {
 		if(isRaceStarted) {
@@ -254,48 +285,62 @@ static int timeBehaviour(Node *node) {
 	return TRUE;
 }
 
-static int speedBehaviour(Node *node) {
+static void speedBehaviourCommon(Node *node, Node *car) {
 	char buffer[11];
-	float speed = convVelocityToSpeed(heroNode.velocity);
+	float speed = convVelocityToSpeed(car->velocity);
 	if(speed >= 1000.0F) {
 		sprintf(buffer, "???.? km/h");
 	} else {
 		sprintf(buffer, "%5.1f km/h", speed);
 	}
-	drawTextSJIS(speedNode.texture, shnm12, 0, 0, buffer);
+	drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
+}
+
+static int speedBehaviour(Node *node) {
+	speedBehaviourCommon(node, &heroNode);
 	return TRUE;
+}
+
+static int speed2pBehaviour(Node *node) {
+	speedBehaviourCommon(node, &opponentNode);
+	return TRUE;
+}
+
+static void lapBehaviourCommon(Node *node, int score) {
+	char buffer[8];
+	int lap = min(max(score / 45 + 1, 1), 3);
+	sprintf(buffer, "LAP %d/3", lap);
+	drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
 }
 
 static int lapBehaviour(Node *node) {
-	if(isfinished) {
-		if(!isReplaying) {
-			if(raceScene.clock - finishedTime > 3.0F) {
-				replay();
-				isReplaying = TRUE;
-			}
-		}
-	} else {
-		char buffer[8];
-		int lap = max(heroLapScore / 45 + 1, 1);
-		if(lap > 3) {
-			isfinished = TRUE;
-			finishedTime = raceScene.clock;
-		} else {
-			sprintf(buffer, "LAP %d/3", lap);
-			drawTextSJIS(node->texture, shnm12, 0, 0, buffer);
-		}
-	}
+	if(!isHeroFinished) lapBehaviourCommon(node, heroLapScore);
 	return TRUE;
 }
 
-static int rankBehaviour(Node *node) {
-	if(!isfinished) {
-		static char rankList[][4] = { "1st", "2nd" };
-		if(heroLapScore != opponentLapScore) {
-			rank = heroLapScore > opponentLapScore ? 0 : 1;
+static int lap2pBehaviour(Node *node) {
+	if(!isOpponentFinished) lapBehaviourCommon(node, opponentLapScore);
+	return TRUE;
+}
+
+static void rankBehaviourCommon(Node *node, int *rank, int scoreA, int scoreB) {
+	if(!(isHeroFinished || isOpponentFinished)) {
+		if(scoreA != scoreB) {
+			*rank = scoreA > scoreB ? 0 : 1;
 		}
-		drawTextSJIS(node->texture, shnm12, 0, 0, rankList[rank]);
+		drawTextSJIS(node->texture, shnm12, 0, 0, rankList[*rank]);
 	}
+}
+
+static int rankBehaviour(Node *node) {
+	static int rank = 0;
+	rankBehaviourCommon(node, &rank, heroLapScore, opponentLapScore);
+	return TRUE;
+}
+
+static int rank2pBehaviour(Node *node) {
+	static int rank = 1;
+	rankBehaviourCommon(node, &rank, opponentLapScore, heroLapScore);
 	return TRUE;
 }
 
@@ -306,24 +351,10 @@ static void raceStarted(void) {
 static int centerBehaviour(Node *node) {
 	float elapsed = 4.0F - raceScene.clock;
 	if(isRaceStarted) {
-		if(isfinished) {
-			if(!isReplaying) {
-				drawTextSJIS(node->texture, shnm16b, 0, 0, "FINISH!");
-				node->isVisible = TRUE;
-			} else {
-				node->isVisible = FALSE;
-			}
+		if(elapsed > 0.0F) {
+			drawTextSJIS(node->texture, shnm16b, 0, 0, "START! ");
 		} else {
-			if(elapsed > 0.0F) {
-				drawTextSJIS(node->texture, shnm16b, 0, 0, "START! ");
-			} else {
-				if(isWrongWay) {
-					node->isVisible = TRUE;
-					drawTextSJIS(node->texture, shnm16b, 0, 0, " ‹t‘–! ");
-				} else {
-					node->isVisible = FALSE;
-				}
-			}
+			node->isVisible = FALSE;
 		}
 	} else {
 		char buffer[8];
@@ -335,15 +366,6 @@ static int centerBehaviour(Node *node) {
 			raceStarted();
 			isRaceStarted = TRUE;
 		}
-	}
-	return TRUE;
-}
-
-static int replayBehaviour(Node *node) {
-	if(isReplaying) {
-		node->isVisible = TRUE;
-	} else {
-		node->isVisible = FALSE;
 	}
 	return TRUE;
 }
@@ -382,47 +404,52 @@ static int titleMenuBehaviour(Node *node) {
 	return TRUE;
 }
 
-static Node initCarRayNode(const char id[]) {
-	Node carRayNode;
-	carRayNode = initNode(id, NO_IMAGE);
-	carRayNode.shape = initShapePlane(75.0F, 150.0F, BLACK, 1.0F);
-	carRayNode.position[2] = 75.0F;
-	carRayNode.collisionShape = carRayNode.shape;
-	carRayNode.collisionMaskPassive = COURSE_COLLISIONMASK | LAP_COLLISIONMASK;
-	carRayNode.isThrough = TRUE;
-	carRayNode.isVisible = FALSE;
-	return carRayNode;
-}
-
 static int mapBehaviour(Node *node) {
-	freeImage(node->texture);
-	node->texture = drawScene(&mapScene);
-	node->texture.transparent = BLACK;
+	drawScene(&mapScene, &node->texture);
 	return TRUE;
 }
 
 static void startGame(void) {
 	isTitle = FALSE;
-
 	if(bgm) StopSound(bgm);
 
 	cameraAngle = 0.0F;
 	cameraFov = PI / 3.0F * 1.5F;
-	isfinished = FALSE;
+	isFinished = FALSE;
+	isHeroFinished = FALSE;
+	isOpponentFinished = FALSE;
 	isRaceStarted = FALSE;
 	isReplaying = FALSE;
+	isWrongWay = FALSE;
+	isWrongWay2p = FALSE;
 	heroLapScore = 0;
 	heroPreviousLap = -1;
 	opponentLapScore = 0;
 	opponentPreviousLap = -1;
 
 	freeVector(&heroRecords);
-	resetIteration(&opponentRecords);
 
 	currentCameraPosition[0] = 0.0F;
 	currentCameraPosition[1] = 25.0F;
 	currentCameraPosition[2] = -75.0F;
 	memcpy_s(nextCameraPosition, SIZE_VEC3, currentCameraPosition, SIZE_VEC3);
+	if(is2p) {
+		freeVector(&opponent2pRecords);
+		timeNode.position[0] = -timeNode.scale[0] / 2.0F;
+		mapNode.position[0] = -mapNode.scale[0] / 2.0F;
+		opponentNode.collisionMaskActive = CAR_COLLISIONMASK;
+		opponentNode.collisionMaskPassive = DIRT_COLLISIONMASK | CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAP_COLLISIONMASK;
+		memcpy_s(camera2P.position, SIZE_VEC3, currentCameraPosition, SIZE_VEC3);
+		memcpy_s(opponentNextCameraPosition, SIZE_VEC3, camera2P.position, SIZE_VEC3);
+	} else {
+		resetIteration(&opponentRecords);
+		timeNode.position[0] = 0.0F;
+		timeNode.interfaceAlign[0] = RIGHT;
+		mapNode.position[0] = 0.0F;
+		mapNode.interfaceAlign[0] = LEFT;
+		opponentNode.collisionMaskActive = 0;
+		opponentNode.collisionMaskPassive = DIRT_COLLISIONMASK | COURSE_COLLISIONMASK | LAP_COLLISIONMASK;
+	}
 
 	heroNode.position[0] = 650.0F;
 	heroNode.position[1] = 75.0F;
@@ -443,7 +470,8 @@ static void startGame(void) {
 	clearVec3(opponentNode.angMomentum);
 
 	clearVector(&raceScene.nodes);
-	pushUntilNull(&raceScene.nodes, &speedNode, &lapNode, &rankNode, &centerNode, &timeNode, &replayNode, NULL);
+	pushUntilNull(&raceScene.nodes, &speedNode, &lapNode, &rankNode, &wrongWayNode, &centerNode, &timeNode, &replayNode, &finishNode, NULL);
+	if(is2p) pushUntilNull(&raceScene.nodes, &speed2pNode, &lap2pNode, &rank2pNode, NULL);
 	pushUntilNull(&raceScene.nodes, &mapNode, NULL);
 	pushUntilNull(&raceScene.nodes, &lapJudgmentNodes[0], &lapJudgmentNodes[1], &lapJudgmentNodes[2], NULL);
 	pushUntilNull(&raceScene.nodes, &heroNode, &opponentNode, NULL);
@@ -469,13 +497,13 @@ static void startTitle(void) {
 }
 
 static void upArrowEvent(void) {
-	titleMenuSelect = titleMenuSelect <= 0 ? 2 : titleMenuSelect - 1;
-	menuSelect = menuSelect <= 0 ? 2 : menuSelect - 1;
+	if(isTitle) titleMenuSelect = titleMenuSelect <= 0 ? 2 : titleMenuSelect - 1;
+	if(isMenuOpened) menuSelect = menuSelect <= 0 ? 2 : menuSelect - 1;
 }
 
 static void downArrowEvent(void) {
-	titleMenuSelect = titleMenuSelect >= 2 ? 0 : titleMenuSelect + 1;
-	menuSelect = menuSelect >= 2 ? 0 : menuSelect + 1;
+	if(isTitle) titleMenuSelect = titleMenuSelect >= 2 ? 0 : titleMenuSelect + 1;
+	if(isMenuOpened) menuSelect = menuSelect >= 2 ? 0 : menuSelect + 1;
 }
 
 static void enterKeyEvent(void) {
@@ -498,9 +526,12 @@ static void enterKeyEvent(void) {
 		if(titleMenuEntered) {
 			switch(titleMenuSelect) {
 				case ONEP_PLAY:
+					is2p = FALSE;
 					startGame();
 					break;
 				case TWOP_PLAY:
+					is2p = TRUE;
+					startGame();
 					break;
 				case TITLE_QUIT:
 					quitGame();
@@ -530,21 +561,41 @@ static void raceSceneBehaviour(Scene *scene, float elapsed) {
 		if(!collisionFlag) {
 			int i;
 			for(i = 0;i < 3;i++) lapJudgmentNodes[i].isVisible = !lapJudgmentNodes[i].isVisible;
-			heroRayNode.isVisible = !heroRayNode.isVisible;
-			opponentRayNode.isVisible = !opponentRayNode.isVisible;
 			courseDirtNode.isVisible = !courseDirtNode.isVisible;
 			collisionFlag = TRUE;
 		}
 	} else {
 		collisionFlag = FALSE;
 	}
-	if(!isReplaying) accel += 0.3F * (controller.move[1] - accel);
-	cameraFov = min(PI / 3.0F * 1.5F, max(PI / 3.0F, cameraFov - 0.05F * controller.arrow[1]));
-	raceScene.camera.fov = cameraFov + accel / 5.0F;
+	if(isFinished) {
+		if(!isReplaying) {
+			if(raceScene.clock - finishedTime > 3.0F) {
+				replay();
+				isReplaying = TRUE;
+			}
+		}
+	} else {
+		if((!is2p && isHeroFinished) || (isHeroFinished && isOpponentFinished)) {
+			isFinished = TRUE;
+			finishedTime = raceScene.clock;
+		}
+	}
+	if(!isReplaying) {
+		heroAccel += 0.3F * (controller.move[1] - heroAccel);
+		opponentAccel += 0.3F * (controller.arrow[1] - opponentAccel);
+	}
+	if(is2p) {
+		cameraFov = PI / 3.0F * 1.5F;
+		cameraAngle = 0.0F;
+	} else {
+		cameraFov = min(PI / 3.0F * 1.5F, max(PI / 3.0F, cameraFov - 0.05F * controller.arrow[1]));
+		cameraAngle -= 0.1F * controller.arrow[0];
+	}
+	raceScene.camera.fov = cameraFov + heroAccel / 5.0F;
+	camera2P.fov = cameraFov + opponentAccel / 5.0F;
 	addVec3(currentCameraPosition, mulVec3ByScalar(subVec3(nextCameraPosition, currentCameraPosition, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), currentCameraPosition);
-	cameraAngle -= 0.1F * controller.arrow[0];
+	addVec3(camera2P.position, mulVec3ByScalar(subVec3(opponentNextCameraPosition, camera2P.position, tempVec3[0]), 2.0F * elapsed, tempVec3[1]), camera2P.position);
 	if(controller.resetCamera) cameraAngle -= 0.3F * cameraAngle;
-	handle += 0.3F * (controller.move[0] - handle);
 	genRotationMat4(0.0F, cameraAngle, 0.0F, tempMat4[0]);
 	mulMat3Vec3(convMat4toMat3(tempMat4[0], tempMat3[0]), currentCameraPosition, raceScene.camera.position);
 }
@@ -557,7 +608,6 @@ static void initGame(void) {
 
 	initControllerDataCross(wasd, 'W', 'A', 'S', 'D', controller.move);
 	initControllerDataCross(arrow, VK_UP, VK_LEFT, VK_DOWN, VK_RIGHT, controller.arrow);
-	action = initControllerData(VK_SPACE, 1.0F, 0.0F, &controller.action);
 	collision = initControllerData(VK_F1, 1.0F, 0.0F, &controller.collision);
 	backCamera = initControllerData(VK_SHIFT, 1.0F, 0.0F, &controller.backCamera);
 	resetCamera = initControllerData(VK_SPACE, 1.0F, 0.0F, &controller.resetCamera);
@@ -573,12 +623,15 @@ static void initGame(void) {
 	raceScene = initScene();
 	raceScene.camera.parent = &heroNode;
 	raceScene.camera.positionMask[1] = TRUE;
-	raceScene.camera.aspect = SCREEN_ASPECT;
 	raceScene.camera.farLimit = 3000.0F;
 	raceScene.background = BLUE;
 	titleScene = raceScene;
 	raceScene.camera.isRotationDisabled = TRUE;
 	raceScene.behaviour = raceSceneBehaviour;
+
+	camera2P = raceScene.camera;
+	camera2P.parent = &opponentNode;
+
 	titleScene.camera.position[0] = 0.0F;
 	titleScene.camera.position[1] = 25.0F;
 	titleScene.camera.position[2] = 50.0F;
@@ -606,7 +659,7 @@ static void initGame(void) {
 	stageNode.collisionShape = stageNode.shape;
 	setVec3(stageNode.scale, 4.0F, XYZ_MASK);
 
-	heroNode = initNode("Hero", hero);
+	heroNode = initNode("hero", hero);
 	initShapeFromObj(&heroNode.shape, "./assets/subaru.obj", 1.0F);
 	initShapeFromObj(&heroNode.collisionShape, "./assets/subaruCollision.obj", 500.0F);
 	heroNode.isPhysicsEnabled = TRUE;
@@ -614,18 +667,13 @@ static void initGame(void) {
 	heroNode.collisionMaskActive = CAR_COLLISIONMASK;
 	heroNode.collisionMaskPassive = CAR_COLLISIONMASK | COURSE_COLLISIONMASK | LAP_COLLISIONMASK | DIRT_COLLISIONMASK;
 	heroNode.behaviour = heroBehaviour;
-	heroRayNode = initCarRayNode("heroRay");
-	addNodeChild(&heroNode, &heroRayNode);
 
 	opponentNode = initNode("opponent", opponentImage);
-	initShapeFromObj(&opponentNode.shape, "./assets/subaru.obj", 1.0F);
-	initShapeFromObj(&opponentNode.collisionShape, "./assets/subaruCollision.obj", 500.0F);
+	opponentNode.shape = heroNode.shape;
+	opponentNode.collisionShape = heroNode.collisionShape;
 	setVec3(opponentNode.scale, 4.0F, XYZ_MASK);
 	opponentNode.isPhysicsEnabled = TRUE;
-	opponentNode.collisionMaskPassive = COURSE_COLLISIONMASK | LAP_COLLISIONMASK;
 	opponentNode.behaviour = opponentBehaviour;
-	opponentRayNode = initCarRayNode("opponentRay");
-	addNodeChild(&opponentNode, &opponentRayNode);
 
 	for(i = 0;i < 3;i++) {
 		lapJudgmentNodes[i] = initNode(lapNames[i], NO_IMAGE);
@@ -637,27 +685,40 @@ static void initGame(void) {
 		lapJudgmentNodes[i].isThrough = TRUE;
 	}
 
-	titleNode =	initNodeText("title", CENTER_X(104), CENTER_Y(16) - 16, 104, 16, NULL);
+	titleNode =	initNodeText("title", 0.0F, -16.0F, CENTER, CENTER, 104, 16, NULL);
 	drawTextSJIS(titleNode.texture, shnm16b, 0, 0, "COARSE RACING");
-	titleMenuNode =	initNodeText("titleMenu", CENTER_X(66), CENTER_Y(12) + 12, 66, 36, titleMenuBehaviour);
-	timeNode = initNodeText("time", -78.0F, 0.0F, 78, 12, timeBehaviour);
-	speedNode = initNodeText("speed", -60.0F, 12.0F, 60, 12, speedBehaviour);
-	lapNode = initNodeText("lap", 0.0F, 0.0F, 42, 12, lapBehaviour);
-	rankNode = initNodeText("rank", 0.0F, 12.0F, 36, 12, rankBehaviour);
-	centerNode = initNodeText("center", 62.0F, 56.0F, 56, 16, centerBehaviour);
+	titleMenuNode =	initNodeText("titleMenu", 0.0F, 22.0F, CENTER, CENTER, 66, 36, titleMenuBehaviour);
+	timeNode = initNodeText("time", 0.0F, 0.0F, RIGHT, TOP, 78, 12, timeBehaviour);
+	speedNode = initNodeText("speed", 0.0F, 12.0F, RIGHT, TOP, 60, 12, speedBehaviour);
+	speed2pNode = initNodeText("speed2p", 0.0F, 12.0F, RIGHT, TOP, 60, 12, speed2pBehaviour);
+	speed2pNode.isVisible = FALSE;
+	lapNode = initNodeText("lap", 0.0F, 0.0F, LEFT, TOP, 42, 12, lapBehaviour);
+	lap2pNode = initNodeText("lap2p", 0.0F, 0.0F, LEFT, TOP, 42, 12, lap2pBehaviour);
+	lap2pNode.isVisible = FALSE;
+	lap2pNode.interfaceAlign[0] = RIGHT;
+	rankNode = initNodeText("rank", 0.0F, 12.0F, LEFT, TOP, 36, 12, rankBehaviour);
+	rank2pNode = initNodeText("rank2p", 0.0F, 12.0F, LEFT, TOP, 36, 12, rank2pBehaviour);
+	rank2pNode.isVisible = FALSE;
+	finishNode = initNodeText("finished", 0.0F, 0.0F, CENTER, CENTER, 56, 16, NULL);
+	finishNode.isVisible = FALSE;
+	drawTextSJIS(finishNode.texture, shnm16b, 0, 0, "FINISH!");
+	centerNode = initNodeText("center", 0.0F, 0.0F, CENTER, CENTER, 56, 16, centerBehaviour);
 	centerNode.isVisible = FALSE;
-	replayNode = initNodeText("replay", -48.0F, -16.0F, 48, 16, replayBehaviour);
+	wrongWayNode = initNodeText("wrongWay", 0.0F, 0.0F, CENTER, CENTER, 40, 16, NULL);
+	wrongWayNode.isVisible = FALSE;
+	drawTextSJIS(wrongWayNode.texture, shnm16b, 0, 0, "‹t‘–!");
+	replayNode = initNodeText("replay", 0.0F, 0.0F, RIGHT, BOTTOM, 48, 16, NULL);
 	drawTextSJIS(replayNode.texture, shnm16b, 0, 0, "REPLAY");
 
-	mapNode = initNodeText("map", 0.0F, 24.0F, 128.0F, 128.0F, mapBehaviour);
-	divVec3ByScalar(mapNode.scale, 4.0F, mapNode.scale);
+	mapNode = initNodeText("map", 0.0F, 24.0F, LEFT, TOP, 32, 32, mapBehaviour);
+	mapNode.texture.transparent = BLACK;
 
 	menuScene = initScene();
-	menuNode = initNodeText("menu", 6.0F, CENTER_Y(36), 66, 36, menuBehaviour);
+	menuNode = initNodeText("menu", 6.0F, 0.0F, LEFT, CENTER, 66, 36, menuBehaviour);
 	push(&menuScene.nodes, &menuNode);
 
 	mapScene = initScene();
-	mapScene.camera = initCamera(0.0F, 1000.0F, 0.0F, SCREEN_ASPECT);
+	mapScene.camera = initCamera(0.0F, 1000.0F, 0.0F, 0.0F);
 	clearVec3(mapScene.camera.worldUp);
 	mapScene.camera.worldUp[0] = -1.0F;
 	mapScene.camera.farLimit = 1000.0F;
@@ -692,7 +753,7 @@ void deinitGame(void) {
 }
 
 int loop(float elapsed, Image *out, int sleep) {
-	Image sceneImage;
+	Image sceneImage = initImageBulk(SCREEN_WIDTH, SCREEN_HEIGHT, NULL_COLOR);
 	float menuTransitionTemp;
 	if(!isMenuOpened) {
 		if(isTitle) {
@@ -708,13 +769,54 @@ int loop(float elapsed, Image *out, int sleep) {
 		raceScene.camera.position[0] *= -1.0F;
 		raceScene.camera.position[2] *= -1.0F;
 	}
-	sceneImage = isTitle ? drawScene(&titleScene) : drawScene(&raceScene);
+	if(isTitle) {
+		drawScene(&titleScene, &sceneImage);
+	} else {
+		Image halfScreen;
+		switch(titleMenuSelect) {
+			case ONEP_PLAY:
+				wrongWayNode.isVisible = isWrongWay;
+				finishNode.isVisible = isHeroFinished & !isReplaying;
+				replayNode.isVisible = isReplaying;
+				drawScene(&raceScene, &sceneImage);
+				break;
+			case TWOP_PLAY:
+				halfScreen = initImageBulk(SCREEN_WIDTH / 2, SCREEN_HEIGHT, NULL_COLOR);
+				speedNode.isVisible = FALSE;
+				speed2pNode.isVisible = TRUE;
+				lapNode.isVisible = FALSE;
+				lap2pNode.isVisible = TRUE;
+				rankNode.isVisible = FALSE;
+				rank2pNode.isVisible = TRUE;
+				mapNode.interfaceAlign[0] = LEFT;
+				timeNode.interfaceAlign[0] = LEFT;
+				wrongWayNode.isVisible = isWrongWay2p & !(isOpponentFinished ^ isReplaying);
+				finishNode.isVisible = isOpponentFinished & !isReplaying;
+				replayNode.isVisible = isReplaying;
+				drawSceneWithCamera(&raceScene, &halfScreen, &camera2P);
+				pasteImage(sceneImage, halfScreen, SCREEN_WIDTH / 2, 0);
+				speedNode.isVisible = TRUE;
+				speed2pNode.isVisible = FALSE;
+				lapNode.isVisible = TRUE;
+				lap2pNode.isVisible = FALSE;
+				rankNode.isVisible = TRUE;
+				rank2pNode.isVisible = FALSE;
+				mapNode.interfaceAlign[0] = RIGHT;
+				timeNode.interfaceAlign[0] = RIGHT;
+				wrongWayNode.isVisible = isWrongWay & !(isHeroFinished ^ isReplaying);
+				finishNode.isVisible = isHeroFinished & !isReplaying;
+				replayNode.isVisible = FALSE;
+				drawScene(&raceScene, &halfScreen);
+				pasteImage(sceneImage, halfScreen, 0, 0);
+				break;
+		}
+	}
 	menuTransitionTemp = menuTransition < 0.1F ? 0.0F : 0.5F * menuTransition;
 	if(menuTransitionTemp == 0.0F) {
 		*out = sceneImage;
 	} else {
-		Image menuImage;
-		menuImage = drawScene(&menuScene);
+		Image menuImage = initImageBulk(SCREEN_WIDTH, SCREEN_HEIGHT, NULL_COLOR);
+		drawScene(&menuScene, &menuImage);
 		*out = ThreeDimensionTransition(sceneImage, menuImage, 0.75F, 0.0F, menuTransitionTemp);
 		freeImage(menuImage);
 		freeImage(sceneImage);
@@ -739,7 +841,7 @@ int main(int argc, char *argv[]) {
 	initCNSG(argc, argv, SCREEN_WIDTH, SCREEN_HEIGHT);
 	SetConsoleCtrlHandler(ctrlCHandler, TRUE);
 	initGame();
-	freeImage(drawScene(&raceScene));
+	drawScene(&raceScene, &NO_IMAGE);
 	startTitle();
 	gameLoop(FRAME_PER_SECOND, loop);
 	deinitGame();
