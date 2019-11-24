@@ -42,10 +42,10 @@ static FontSJIS shnm12;
 static FontSJIS shnm16b;
 
 static int titleMenuEntered;
-static int titleMenuSelect;
+static TitleMenuItem titleMenuSelect;
 static ControllerData *wasd[4], *collision, *menu, *arrow[4], *backCamera, *resetCamera;
 static ControllerData *enterKey;
-static int menuSelect;
+static MenuItem menuSelect;
 
 static Image hero, opponentImage;
 static Image course;
@@ -220,39 +220,36 @@ static int heroBehaviour(Node *node) {
 
 static int opponentBehaviour(Node *node) {
 	if(isRaceStarted) {
-		switch(titleMenuSelect) {
-			case ONEP_PLAY:
-				if(playCar(&opponentRecords, node, currentTime)) {
-					node->isVisible = FALSE;
-					opponentMarkerNode.isVisible = FALSE;
-				}
-				break;
-			case TWOP_PLAY:
-				if(isReplaying) {
-					playCar(&opponent2pRecords, node, currentTime);
-				} else {
-					recordCar(&opponent2pRecords, node, currentTime);
-					if(node->collisionFlags & COURSE_COLLISIONMASK) {
-						float upper[3] = { 0.0F, 25.0F, 0.0F };
-						float front[3];
-						if(opponentLapScore >= 3 * 45) {
-							isOpponentFinished = TRUE;
-							controlCar(node, 0.0F, 0.0F, front);
-						} else {
-							if(controlCar(node, opponentAccel, controller.arrow[0], front) < 0.0F) {
-								node->angle[0] = 0.0F;
-								node->angle[2] = 0.0F;
-								node->angVelocity[0] = 0.0F;
-								node->angVelocity[2] = 0.0F;
-								node->angMomentum[0] = 0.0F;
-								node->angMomentum[2] = 0.0F;
-							}
+		if(is2p) {
+			if(isReplaying) {
+				playCar(&opponent2pRecords, node, currentTime);
+			} else {
+				recordCar(&opponent2pRecords, node, currentTime);
+				if(node->collisionFlags & COURSE_COLLISIONMASK) {
+					float upper[3] = { 0.0F, 25.0F, 0.0F };
+					float front[3];
+					if(opponentLapScore >= 3 * 45) {
+						isOpponentFinished = TRUE;
+						controlCar(node, 0.0F, 0.0F, front);
+					} else {
+						if(controlCar(node, opponentAccel, controller.arrow[0], front) < 0.0F) {
+							node->angle[0] = 0.0F;
+							node->angle[2] = 0.0F;
+							node->angVelocity[0] = 0.0F;
+							node->angVelocity[2] = 0.0F;
+							node->angMomentum[0] = 0.0F;
+							node->angMomentum[2] = 0.0F;
 						}
-						mulVec3ByScalar(front, -75.0F, opponentNextCameraPosition);
-						addVec3(opponentNextCameraPosition, upper, opponentNextCameraPosition);
 					}
+					mulVec3ByScalar(front, -75.0F, opponentNextCameraPosition);
+					addVec3(opponentNextCameraPosition, upper, opponentNextCameraPosition);
 				}
-				break;
+			}
+		} else {
+			if(playCar(&opponentRecords, node, currentTime)) {
+				node->isVisible = FALSE;
+				opponentMarkerNode.isVisible = FALSE;
+			}
 		}
 	}
 	isWrongWay2p = updateLapScore(node->collisionFlags, &opponentPreviousLap, &opponentLapScore, isWrongWay2p);
@@ -773,42 +770,39 @@ int loop(float elapsed, Image *out, int sleep) {
 		drawScene(&titleScene, &sceneImage);
 	} else {
 		Image halfScreen;
-		switch(titleMenuSelect) {
-			case ONEP_PLAY:
-				wrongWayNode.isVisible = isWrongWay;
-				finishNode.isVisible = isHeroFinished & !isReplaying;
-				replayNode.isVisible = isReplaying;
-				drawScene(&raceScene, &sceneImage);
-				break;
-			case TWOP_PLAY:
-				halfScreen = initImageBulk(SCREEN_WIDTH / 2, SCREEN_HEIGHT, NULL_COLOR);
-				speedNode.isVisible = FALSE;
-				speed2pNode.isVisible = TRUE;
-				lapNode.isVisible = FALSE;
-				lap2pNode.isVisible = TRUE;
-				rankNode.isVisible = FALSE;
-				rank2pNode.isVisible = TRUE;
-				mapNode.interfaceAlign[0] = LEFT;
-				timeNode.interfaceAlign[0] = LEFT;
-				wrongWayNode.isVisible = isWrongWay2p & !(isOpponentFinished ^ isReplaying);
-				finishNode.isVisible = isOpponentFinished & !isReplaying;
-				replayNode.isVisible = isReplaying;
-				drawSceneWithCamera(&raceScene, &halfScreen, &camera2P);
-				pasteImage(sceneImage, halfScreen, SCREEN_WIDTH / 2, 0);
-				speedNode.isVisible = TRUE;
-				speed2pNode.isVisible = FALSE;
-				lapNode.isVisible = TRUE;
-				lap2pNode.isVisible = FALSE;
-				rankNode.isVisible = TRUE;
-				rank2pNode.isVisible = FALSE;
-				mapNode.interfaceAlign[0] = RIGHT;
-				timeNode.interfaceAlign[0] = RIGHT;
-				wrongWayNode.isVisible = isWrongWay & !(isHeroFinished ^ isReplaying);
-				finishNode.isVisible = isHeroFinished & !isReplaying;
-				replayNode.isVisible = FALSE;
-				drawScene(&raceScene, &halfScreen);
-				pasteImage(sceneImage, halfScreen, 0, 0);
-				break;
+		if(is2p) {
+			halfScreen = initImageBulk(SCREEN_WIDTH / 2, SCREEN_HEIGHT, NULL_COLOR);
+			speedNode.isVisible = FALSE;
+			speed2pNode.isVisible = TRUE;
+			lapNode.isVisible = FALSE;
+			lap2pNode.isVisible = TRUE;
+			rankNode.isVisible = FALSE;
+			rank2pNode.isVisible = TRUE;
+			mapNode.interfaceAlign[0] = LEFT;
+			timeNode.interfaceAlign[0] = LEFT;
+			wrongWayNode.isVisible = isWrongWay2p & !(isOpponentFinished ^ isReplaying);
+			finishNode.isVisible = isOpponentFinished & !isReplaying;
+			replayNode.isVisible = isReplaying;
+			drawSceneWithCamera(&raceScene, &halfScreen, &camera2P);
+			pasteImage(sceneImage, halfScreen, SCREEN_WIDTH / 2, 0);
+			speedNode.isVisible = TRUE;
+			speed2pNode.isVisible = FALSE;
+			lapNode.isVisible = TRUE;
+			lap2pNode.isVisible = FALSE;
+			rankNode.isVisible = TRUE;
+			rank2pNode.isVisible = FALSE;
+			mapNode.interfaceAlign[0] = RIGHT;
+			timeNode.interfaceAlign[0] = RIGHT;
+			wrongWayNode.isVisible = isWrongWay & !(isHeroFinished ^ isReplaying);
+			finishNode.isVisible = isHeroFinished & !isReplaying;
+			replayNode.isVisible = FALSE;
+			drawScene(&raceScene, &halfScreen);
+			pasteImage(sceneImage, halfScreen, 0, 0);
+		} else {
+			wrongWayNode.isVisible = isWrongWay;
+			finishNode.isVisible = isHeroFinished & !isReplaying;
+			replayNode.isVisible = isReplaying;
+			drawScene(&raceScene, &sceneImage);
 		}
 	}
 	menuTransitionTemp = menuTransition < 0.1F ? 0.0F : 0.5F * menuTransition;
