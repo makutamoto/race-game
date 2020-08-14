@@ -559,6 +559,8 @@ void startRace(int multi) {
 	opponentPreviousLap = -1;
 	replayNode.isVisible = FALSE;
 	replay2pNode.isVisible = FALSE;
+	finishNode.isVisible = FALSE;
+	finish2pNode.isVisible = FALSE;
 
 	freeVector(&heroRecords);
 
