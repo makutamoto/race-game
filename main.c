@@ -9,6 +9,7 @@
 #include "./include/race.h"
 #include "./include/title.h"
 #include "./include/menu.h"
+#include "./include/bestTime.h"
 
 FontSJIS shnm12, shnm16b;
 
@@ -17,9 +18,12 @@ Node stageNode, courseNode;
 Shape carShape, carCollisionShape;
 WindowManager *rootManager;
 
+float bestTime;
+
 static void initGame(void) {
 	shnm12 = initFontSJIS(loadBitmap("assets/shnm6x12r.bmp", NULL_COLOR), loadBitmap("assets/shnmk12.bmp", NULL_COLOR), 6, 12, 12);
 	shnm16b = initFontSJIS(loadBitmap("assets/shnm8x16rb.bmp", NULL_COLOR), loadBitmap("assets/shnmk16b.bmp", NULL_COLOR), 8, 16, 16);
+	loadBestTime(&bestTime, "./bestTime/bestTime.dat");
 	initRace();
 	initTitle();
 	initMenu();
