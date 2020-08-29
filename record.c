@@ -40,7 +40,7 @@ void saveRecord(Vector *records, const char path[]) {
 	FILE *file;
 	CarRecord *record;
 	if(fopen_s(&file, path, "wb")) {
-		printf("saveRecord: Failed to open a file: %s\n", path);
+		fprintf(stderr, "saveRecord: Failed to open a file: %s\n", path);
 	} else {
 		iterf(records, &record) {
 			CarRecordForSave data;
@@ -60,7 +60,7 @@ void loadRecord(Vector *records, const char path[]) {
 	FILE *file;
 	*records = initVector();
 	if(fopen_s(&file, path, "rb")) {
-		printf("loadRecord: Failed to open a file: %s\n", path);
+		fprintf(stderr, "loadRecord: Failed to open a file: %s\n", path);
 	} else {
 		CarRecordForSave data;
 		size_t count;
