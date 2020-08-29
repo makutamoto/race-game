@@ -107,7 +107,7 @@ void initTitle(void) {
 }
 
 void startTitle(void) {
-	char buffer[18];
+	char buffer[32];
 	int minutes;
 	float seconds;
 
