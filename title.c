@@ -1,15 +1,19 @@
+#include<stdio.h>
+
 #include "./cnsglib/include/cnsg.h"
 
 #include "./include/common.h"
 #include "./include/title.h"
 #include "./include/race.h"
 #include "./include/record.h"
+#include "./include/bestTime.h"
 
 static Window titleWindow;
 static View titleView;
 static Scene titleScene;
 static Node titleNode, titleMenuNode;
 static Node titleCarNode;
+static Node bestTimeNode;
 
 static int titleMenuEntered;
 static TitleMenuItem titleMenuSelect;
@@ -90,7 +94,7 @@ void initTitle(void) {
   titleNode =	initNodeText("title", 0.0F, -16.0F, CENTER, CENTER, 104, 16, NULL);
 	drawTextSJIS(&titleNode.texture, &shnm16b, 0, 0, "COARSE RACING");
   titleMenuNode =	initNodeText("titleMenu", 0.0F, 22.0F, CENTER, CENTER, 66, 36, titleMenuBehaviour);
-	pushUntilNull(&titleScene.nodes, &titleNode, &titleMenuNode, &titleCarNode, &courseNode, &stageNode, NULL);
+	pushUntilNull(&titleScene.nodes, &titleNode, &titleMenuNode, &titleCarNode, &courseNode, &stageNode, &bestTimeNode, NULL);
 
   titleCarNode = initNode("titleCar", carImage);
 	titleCarNode.shape = carShape;
@@ -98,9 +102,15 @@ void initTitle(void) {
 	titleCarNode.behaviour = titleCarBehaviour;
 
   loadRecord(&titleRecords, "./carRecords/title.crd");
+	
+	bestTimeNode = initNodeText("bestTime", 0.0F, 0.0F, RIGHT, TOP, 102, 12, NULL);
 }
 
 void startTitle(void) {
+	char buffer[32];
+	int minutes;
+	float seconds;
+
   StopAllSound();
 	titleMenuEntered = FALSE;
 	resetIteration(&titleRecords);
@@ -112,5 +122,15 @@ void startTitle(void) {
 	clearVec3(titleCarNode.angVelocity);
 	clearVec3(titleCarNode.angMomentum);
 	titleScene.clock = 0.0F;
+
+	minutes = bestTime / 60;
+	seconds = bestTime - 60.0F * minutes;
+	if (minutes > 9) {
+		minutes = 9;
+		seconds = 59.999F;
+	}
+	sprintf(buffer, "BESTTIME %d`%06.3f", minutes, seconds);
+	drawTextSJIS(&bestTimeNode.texture, &shnm12, 0, 0, buffer);
+
   setWindow(rootManager, &titleWindow, revoluteTransition, 1.0F);
 }

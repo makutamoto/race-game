@@ -6,6 +6,7 @@
 #include "./include/race.h"
 #include "./include/menu.h"
 #include "./include/record.h"
+#include "./include/bestTime.h"
 
 static Vector heroRecords, opponentRecords, opponent2pRecords;
 
@@ -19,7 +20,7 @@ static ControllerData *resetCamera;
 static ControllerDataCross *move, *arrow;
 static Scene raceScene;
 static Camera camera2P;
-static Node speedNode, lapNode, rankNode, finishNode, centerNode, timeNode, replayNode, wrongWayNode;
+static Node speedNode, lapNode, rankNode, finishNode, centerNode, timeNode, replayNode, wrongWayNode, newRecordNode;
 static Node time2pNode, speed2pNode, lap2pNode, rank2pNode, finish2pNode, replay2pNode;
 static Node mapNode, map2pNode;
 static Node lapJudgmentNodes[3];
@@ -158,6 +159,11 @@ static int heroBehaviour(Node *node, float elapsed) {
 				if(heroLapScore >= 3 * 45) {
 					isHeroFinished = TRUE;
 					finishNode.isVisible = TRUE;
+					if(currentTime < bestTime) {
+						newRecordNode.isVisible = TRUE;
+						bestTime = currentTime;
+						saveBestTime(&bestTime, "./bestTime/bestTime.dat");
+					}
 					controlCar(node, 0, 0, front);
 				} else {
 					int isDrift;
@@ -352,6 +358,7 @@ static void raceSceneBehaviour(Scene *scene, float elapsed) {
 				replay();
 				finishNode.isVisible = FALSE;
 				finish2pNode.isVisible = FALSE;
+				newRecordNode.isVisible = FALSE;
 				if(is2p) replay2pNode.isVisible = TRUE;
 				else replayNode.isVisible = TRUE;
 				isReplaying = TRUE;
@@ -424,7 +431,7 @@ void initRace(void) {
 
 	camera2P = raceScene.camera;
 	camera2P.parent = &opponentNode;
-	pushUntilNull(&raceScene.camera.nodes, &speedNode, &lapNode, &rankNode, &wrongWayNode, &timeNode, &finishNode, &mapNode, &replayNode, NULL);
+	pushUntilNull(&raceScene.camera.nodes, &speedNode, &lapNode, &rankNode, &wrongWayNode, &timeNode, &finishNode, &mapNode, &replayNode, &newRecordNode, NULL);
 	pushUntilNull(&camera2P.nodes, &speed2pNode, &lap2pNode, &rank2pNode, &time2pNode, &map2pNode, &finish2pNode, &replay2pNode, NULL);
 
   courseNode = initNode("course", course);
@@ -508,6 +515,9 @@ void initRace(void) {
 	replayNode = initNodeText("replay", 0.0F, 0.0F, RIGHT, BOTTOM, 48, 16, NULL);
 	drawTextSJIS(&replayNode.texture, &shnm16b, 0, 0, "REPLAY");
 	replay2pNode = replayNode;
+	newRecordNode = initNodeText("newRecord", 0.0F, 14.0F, CENTER, CENTER, 66, 12, NULL);
+	newRecordNode.isVisible = FALSE;
+	drawTextSJIS(&newRecordNode.texture, &shnm12, 0, 0, "NEW RECORD!");
 
 	mapNode = initNodeText("map", 0.0F, 24.0F, RIGHT, TOP, 32, 32, mapBehaviour);
 	mapNode.texture.transparent = BLACK;
@@ -561,6 +571,7 @@ void startRace(int multi) {
 	replay2pNode.isVisible = FALSE;
 	finishNode.isVisible = FALSE;
 	finish2pNode.isVisible = FALSE;
+	newRecordNode.isVisible = FALSE;
 
 	freeVector(&heroRecords);
 
